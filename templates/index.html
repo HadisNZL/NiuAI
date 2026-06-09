@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NIU AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #f0f2f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .app-container { width: 100%; max-width: 900px; height: 100vh; max-height: 850px; background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; margin: 20px; position: relative; }
+        .header { padding: 14px 20px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; background: #fff; gap: 8px; }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .header-left h1 { font-size: 17px; font-weight: 700; color: #1a1a1a; white-space: nowrap; }
+        .header-left .subtitle { font-size: 11px; color: #999; white-space: nowrap; }
+        .header-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .settings-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; border-radius: 6px; transition: background 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+        .settings-btn:hover { background: #f0f0f0; }
+        .model-selector { display: flex; align-items: center; gap: 6px; }
+        .model-selector select { padding: 5px 10px; border: 1px solid #d9d9d9; border-radius: 8px; background: white; font-size: 13px; cursor: pointer; outline: none; max-width: 170px; }
+        .model-selector select:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+        .header-btn { padding: 5px 10px; background: #f5f5f5; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 12px; cursor: pointer; color: #333; transition: all 0.2s; white-space: nowrap; }
+        .header-btn:hover { background: #e8e8e8; }
+        .header-btn.export-btn { color: #1677ff; border-color: #1677ff; background: #e6f4ff; }
+        .header-btn.export-btn:hover { background: #bae0ff; }
+
+        .chat-box { flex: 1; overflow-y: auto; padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; background: #fafafa; }
+        .message { max-width: 85%; padding: 10px 14px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; }
+        .message.user { align-self: flex-end; background: #1677ff; color: white; border-bottom-right-radius: 4px; }
+        .message.assistant { align-self: flex-start; background: white; border: 1px solid #e8e8e8; border-bottom-left-radius: 4px; }
+        .message.system { align-self: center; background: #fffbe6; border: 1px solid #ffe58f; color: #ad8b00; font-size: 12px; padding: 6px 14px; text-align: center; max-width: 95%; }
+
+        .message.assistant pre { background: #f5f5f5; border-radius: 8px; padding: 12px; overflow-x: auto; border: 1px solid #e8e8e8; margin: 8px 0; }
+        .message.assistant code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+        .message.assistant pre code { background: none; padding: 0; border-radius: 0; }
+        .message.assistant p { margin: 4px 0; }
+        .message.assistant ul, .message.assistant ol { padding-left: 20px; margin: 4px 0; }
+        .message.assistant table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+        .message.assistant th, .message.assistant td { border: 1px solid #d9d9d9; padding: 5px 10px; }
+        .message.assistant th { background: #fafafa; font-weight: 600; }
+        .message.assistant blockquote { border-left: 3px solid #1677ff; padding-left: 12px; color: #666; margin: 8px 0; }
+        .message.assistant h1, .message.assistant h2, .message.assistant h3 { margin: 10px 0 4px; font-weight: 600; }
+        .message.assistant a { color: #1677ff; text-decoration: underline; }
+
+        .reasoning-block { background: #f0f5ff; border-left: 3px solid #1677ff; padding: 8px 12px; margin-bottom: 6px; border-radius: 0 8px 8px 0; font-size: 12px; color: #555; line-height: 1.5; }
+        .reasoning-block::before { content: "\f1a0 思考过程"; display: block; font-size: 11px; color: #1677ff; font-weight: 500; margin-bottom: 3px; }
+
+        .input-area { padding: 10px 20px 14px; border-top: 1px solid #e8e8e8; background: white; }
+        .toolbar { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
+        .toolbar span { font-size: 11px; color: #999; }
+        .toolbar select { padding: 3px 6px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; outline: none; max-width: 150px; }
+        .toolbar .work-dir { font-size: 11px; color: #999; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; cursor: pointer; }
+        .toolbar .work-dir:hover { color: #1677ff; }
+
+        .input-row { display: flex; gap: 8px; align-items: flex-end; }
+        .input-row textarea { flex: 1; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 10px; font-size: 14px; resize: none; outline: none; font-family: inherit; min-height: 40px; max-height: 100px; line-height: 1.5; }
+        .input-row textarea:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+        .input-row button { padding: 8px 20px; background: #1677ff; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; align-self: flex-end; }
+        .input-row button:hover { background: #4096ff; }
+        .input-row button:disabled { background: #a0c4ff; cursor: not-allowed; }
+        .input-row .clear-btn { background: transparent; color: #999; padding: 8px 6px; font-size: 16px; }
+        .input-row .clear-btn:hover { color: #ff4d4f; background: transparent; }
+
+        .loading-indicator { align-self: center; color: #999; font-size: 13px; display: none; padding: 4px; }
+        .loading-indicator.active { display: block; }
+
+        /* === 设置面板（Modal） === */
+        .modal-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; border-radius: 16px; }
+        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+        .modal { background: white; border-radius: 16px; width: 90%; max-width: 520px; max-height: 85%; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { font-size: 16px; font-weight: 600; }
+        .modal-header .close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 4px; line-height: 1; }
+        .modal-header .close-btn:hover { color: #333; }
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid #e8e8e8; display: flex; justify-content: flex-end; gap: 8px; }
+        .model-list { margin-bottom: 16px; }
+        .model-list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid #e8e8e8; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; }
+        .model-list-item:hover { border-color: #1677ff; background: #f6f8ff; }
+        .model-list-item .model-name { font-weight: 500; font-size: 14px; }
+        .model-list-item .model-detail { font-size: 11px; color: #999; }
+        .model-list-item .del-btn { background: none; border: none; color: #ff4d4f; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+        .model-list-item .del-btn:hover { background: #fff1f0; }
+        .add-btn { width: 100%; padding: 8px; border: 1px dashed #d9d9d9; border-radius: 8px; background: none; color: #1677ff; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .add-btn:hover { border-color: #1677ff; background: #f6f8ff; }
+
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 13px; outline: none; }
+        .form-group input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+        .form-row { display: flex; gap: 8px; }
+        .form-row .form-group { flex: 1; }
+        .btn-primary { padding: 7px 18px; background: #1677ff; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
+        .btn-primary:hover { background: #4096ff; }
+        .btn-default { padding: 7px 18px; background: #f5f5f5; border: 1px solid #d9d9d9; color: #333; border-radius: 8px; font-size: 13px; cursor: pointer; }
+        .btn-default:hover { background: #e8e8e8; }
+
+        @media (max-width: 600px) {
+            .app-container { max-height: 100vh; margin: 0; border-radius: 0; }
+            .modal-overlay.active { border-radius: 0; }
+            .message { max-width: 92%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <div class="header-left">
+                <h1>NIU AI</h1>
+                <span class="subtitle">by 牛梓霖</span>
+            </div>
+            <div class="header-controls">
+                <div class="model-selector">
+                    <button class="settings-btn" id="settings-btn" title="模型设置">⚙️</button>
+                    <select id="model-select"><option value="">加载中...</option></select>
+                </div>
+                <button class="header-btn export-btn" id="export-btn" title="导出对话">📥 导出</button>
+            </div>
+        </div>
+
+        <div class="chat-box" id="chat-box">
+            <div class="message system">选择模型，开始对话吧 ✨ 点击 ⚙️ 配置模型</div>
+        </div>
+
+        <div class="loading-indicator" id="loading">AI 思考中...</div>
+
+        <div class="input-area">
+            <div class="toolbar">
+                <span>快捷提示词：</span>
+                <select id="prompt-select"><option value="">— 选择模板 —</option></select>
+                <span class="work-dir" id="work-dir" title="点击复制路径">📁 ~</span>
+            </div>
+            <div class="input-row">
+                <button class="clear-btn" id="clear-btn" title="清空对话">🗑️</button>
+                <textarea id="message-input" placeholder="输入你的问题... (Enter 发送, Shift+Enter 换行)" rows="1" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+                <button id="send-btn">发送</button>
+            </div>
+        </div>
+
+        <!-- 设置面板 Modal -->
+        <div class="modal-overlay" id="settings-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>⚙️ 模型设置</h2>
+                    <button class="close-btn" id="modal-close">×</button>
+                </div>
+                <div class="modal-body" id="modal-body">
+                    <div class="model-list" id="model-list"></div>
+                    <button class="add-btn" id="add-model-btn">＋ 添加新模型</button>
+
+                    <div id="model-form" style="display:none; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e8e8e8;">
+                        <h3 id="form-title" style="font-size:14px;margin-bottom:12px;font-weight:600;">编辑模型</h3>
+                        <div class="form-group">
+                            <label>模型标识 (Key) *</label>
+                            <input id="form-key" placeholder="例如: my-model" />
+                        </div>
+                        <div class="form-group">
+                            <label>显示名称 (Name) *</label>
+                            <input id="form-name" placeholder="例如: My Custom Model" />
+                        </div>
+                        <div class="form-group">
+                            <label>Provider</label>
+                            <select id="form-provider">
+                                <option value="openai">OpenAI 兼容</option>
+                                <option value="anthropic">Anthropic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>API Key *</label>
+                            <input id="form-api-key" type="password" placeholder="sk-..." />
+                        </div>
+                        <div class="form-group">
+                            <label>API Base URL *</label>
+                            <input id="form-base" placeholder="https://api.openai.com" />
+                        </div>
+                        <div class="form-group">
+                            <label>模型名 (Model) *</label>
+                            <input id="form-model" placeholder="gpt-4o" />
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Tokens</label>
+                                <input id="form-tokens" type="number" value="4096" />
+                            </div>
+                            <div class="form-group">
+                                <label>Temperature</label>
+                                <input id="form-temp" type="number" step="0.1" min="0" max="2" value="0.7" />
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+                            <button class="btn-default" id="form-cancel" style="padding:6px 16px;">取消</button>
+                            <button class="btn-primary" id="form-save" style="padding:6px 16px;">💾 保存</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-default" id="modal-close-btn">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isLoading = false;
+        let modelsData = [];
+        let editingKey = null;
+
+        const chatBox = document.getElementById('chat-box');
+        const input = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const exportBtn = document.getElementById('export-btn');
+        const modelSelect = document.getElementById('model-select');
+        const promptSelect = document.getElementById('prompt-select');
+        const loading = document.getElementById('loading');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const modalClose = document.getElementById('modal-close');
+        const modalCloseBtn = document.getElementById('modal-close-btn');
+        const addModelBtn = document.getElementById('add-model-btn');
+        const modelList = document.getElementById('model-list');
+        const modelForm = document.getElementById('model-form');
+        const formTitle = document.getElementById('form-title');
+        const formKey = document.getElementById('form-key');
+        const formName = document.getElementById('form-name');
+        const formProvider = document.getElementById('form-provider');
+        const formApiKey = document.getElementById('form-api-key');
+        const formBase = document.getElementById('form-base');
+        const formModel = document.getElementById('form-model');
+        const formTokens = document.getElementById('form-tokens');
+        const formTemp = document.getElementById('form-temp');
+        const formSave = document.getElementById('form-save');
+        const formCancel = document.getElementById('form-cancel');
+        const workDir = document.getElementById('work-dir');
+
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
+        }
+
+        // === 模型管理 ===
+        async function loadModels() {
+            try {
+                const res = await fetch('/api/models');
+                modelsData = await res.json();
+                modelSelect.innerHTML = '';
+                modelsData.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.key;
+                    opt.textContent = m.name + ' (' + m.model + ')';
+                    modelSelect.appendChild(opt);
+                });
+            } catch(err) {
+                modelSelect.innerHTML = '<option value="">加载失败</option>';
+            }
+        }
+
+        async function loadPrompts() {
+            try {
+                const res = await fetch('/api/prompts');
+                const prompts = await res.json();
+                promptSelect.innerHTML = '<option value="">— 选择模板 —</option>';
+                prompts.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.prompt;
+                    opt.textContent = p.name;
+                    promptSelect.appendChild(opt);
+                });
+            } catch(err) {}
+        }
+
+        async function updateWorkDir() {
+            try {
+                const res = await fetch('/api/current_dir');
+                const data = await res.json();
+                const el = document.getElementById('work-dir');
+                if (el) {
+                    const path = data.path.replace('/Users/', '~/');
+                    el.textContent = '📁 ' + path;
+                    el.title = data.path + ' (点击复制)';
+                }
+            } catch(e) {}
+        }
+
+        // 点击工作目录复制路径
+        document.addEventListener('click', function(e) {
+            const el = e.target.closest('#work-dir');
+            if (el) {
+                const path = el.title.replace(' (点击复制)', '');
+                navigator.clipboard.writeText(path).then(() => {
+                    const orig = el.textContent;
+                    el.textContent = '✅ 已复制';
+                    setTimeout(() => { el.textContent = orig; }, 1500);
+                }).catch(() => {});
+            }
+        });
+
+        // === 设置面板 ===
+        function openSettings() {
+            settingsModal.classList.add('active');
+            modelForm.style.display = 'none';
+            renderModelList();
+        }
+
+        function closeSettings() {
+            settingsModal.classList.remove('active');
+            modelForm.style.display = 'none';
+        }
+
+        async function renderModelList() {
+            try {
+                const res = await fetch('/api/models');
+                const models = await res.json();
+                modelList.innerHTML = '';
+                models.forEach(m => {
+                    const div = document.createElement('div');
+                    div.className = 'model-list-item';
+                    div.innerHTML = `
+                        <div style="flex:1">
+                            <div class="model-name">🤖 ${m.name}</div>
+                            <div class="model-detail">${m.model} · ${m.api_base || '无'} · ${m.api_key_masked || '无 Key'}</div>
+                        </div>
+                        <button class="del-btn" data-key="${m.key}" title="删除">✕</button>
+                    `;
+                    div.addEventListener('click', function(e) {
+                        if (e.target.classList.contains('del-btn')) return;
+                        openEditForm(m.key);
+                    });
+                    const delBtn = div.querySelector('.del-btn');
+                    delBtn.addEventListener('click', async function(e) {
+                        e.stopPropagation();
+                        if (confirm('确定删除模型 "' + m.name + '"？')) {
+                            await fetch('/api/models/' + m.key, { method: 'DELETE' });
+                            await loadModels();
+                            renderModelList();
+                        }
+                    });
+                    modelList.appendChild(div);
+                });
+            } catch(err) {
+                modelList.innerHTML = '<div style="color:#ff4d4f;font-size:13px;">加载失败</div>';
+            }
+        }
+
+        async function openEditForm(key) {
+            editingKey = key;
+
+            if (key === '__new__') {
+                formTitle.textContent = '➕ 添加新模型';
+                formKey.value = '';
+                formName.value = '';
+                formProvider.value = 'openai';
+                formApiKey.value = '';
+                formBase.value = '';
+                formModel.value = '';
+                formTokens.value = '4096';
+                formTemp.value = '0.7';
+                formKey.disabled = false;
+            } else {
+                formTitle.textContent = '✏️ 编辑模型';
+                try {
+                    const res = await fetch('/api/models/' + key);
+                    const cfg = await res.json();
+                    formKey.value = cfg.key;
+                    formName.value = cfg.name;
+                    formProvider.value = cfg.provider || 'openai';
+                    formApiKey.value = cfg.api_key || '';
+                    formBase.value = cfg.api_base || '';
+                    formModel.value = cfg.model || '';
+                    formTokens.value = cfg.max_tokens || 4096;
+                    formTemp.value = cfg.temperature ?? 0.7;
+                    formKey.disabled = true;
+                } catch(err) {
+                    alert('加载模型配置失败');
+                    return;
+                }
+            }
+
+            modelForm.style.display = 'block';
+        }
+
+        async function saveModelForm() {
+            const key = formKey.value.trim();
+            const name = formName.value.trim();
+            const provider = formProvider.value;
+            const api_key = formApiKey.value.trim();
+            const api_base = formBase.value.trim();
+            const model = formModel.value.trim();
+            const max_tokens = parseInt(formTokens.value) || 4096;
+            const temperature = parseFloat(formTemp.value) || 0.7;
+
+            if (!key || !name || !api_key || !api_base || !model) {
+                alert('请填写所有必填字段（标识、名称、API Key、Base URL、模型名）');
+                return;
+            }
+
+            const payload = { key, name, provider, api_key, api_base, model, max_tokens, temperature };
+
+            try {
+                let res;
+                if (editingKey === '__new__') {
+                    res = await fetch('/api/models', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    res = await fetch('/api/models/' + editingKey, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                }
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    alert('保存失败: ' + (err.error || '未知错误'));
+                    return;
+                }
+
+                await loadModels();
+                renderModelList();
+                modelForm.style.display = 'none';
+                alert('✅ 保存成功！');
+            } catch(err) {
+                alert('网络错误: ' + err.message);
+            }
+        }
+
+        // === Markdown 渲染 ===
+        function renderMarkdown(text) {
+            if (typeof marked !== 'undefined') {
+                const escaped = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                return marked.parse(escaped);
+            }
+            return text.replace(/\n/g, '<br>');
+        }
+
+        function appendMessage(role, content) {
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+
+            if (role === 'assistant') {
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'markdown-body';
+                div.appendChild(contentDiv);
+                div.contentDiv = contentDiv;
+                div.rawContent = content || '';
+                div.reasoningDiv = null;
+                div.rawReasoning = '';
+                if (content) contentDiv.innerHTML = renderMarkdown(content);
+            } else {
+                div.textContent = content;
+            }
+
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+            return div;
+        }
+
+        function updateMessage(div, newContent) {
+            if (div.contentDiv) {
+                div.rawContent += newContent;
+                div.contentDiv.innerHTML = renderMarkdown(div.rawContent);
+            } else {
+                div.textContent += newContent;
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const message = input.value.trim();
+            if (!message || isLoading) return;
+            const model = modelSelect.value;
+            if (!model) { appendMessage('system', '⚠️ 请先选择一个模型'); return; }
+
+            appendMessage('user', message);
+            input.value = '';
+            input.style.height = 'auto';
+
+            const aiDiv = appendMessage('assistant', '');
+            aiDiv.rawContent = '';
+            aiDiv.rawReasoning = '';
+
+            isLoading = true;
+            loading.classList.add('active');
+            sendBtn.disabled = true;
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model, message }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    aiDiv.contentDiv.innerHTML = '❌ 错误: ' + (err.error || '未知错误');
+                    return;
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop();
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.content) {
+                                    updateMessage(aiDiv, data.content);
+                                }
+                                if (data.cmd_result) {
+                                    // 显示命令执行结果
+                                    const cmdDiv = appendMessage('system', data.cmd_result);
+                                }
+                                if (data.work_dir) {
+                                    const el = document.getElementById('work-dir');
+                                    if (el) {
+                                        const path = data.work_dir.replace('/Users/', '~/');
+                                        el.textContent = '📁 ' + path;
+                                        el.title = data.work_dir + ' (点击复制)';
+                                    }
+                                }
+                                if (data.reasoning) {
+                                    if (aiDiv.reasoningDiv) {
+                                        aiDiv.rawReasoning += data.reasoning;
+                                        aiDiv.reasoningDiv.innerHTML = renderMarkdown(aiDiv.rawReasoning);
+                                    } else {
+                                        const rDiv = document.createElement('div');
+                                        rDiv.className = 'reasoning-block';
+                                        aiDiv.rawReasoning = data.reasoning;
+                                        rDiv.innerHTML = renderMarkdown(aiDiv.rawReasoning);
+                                        aiDiv.parentNode.insertBefore(rDiv, aiDiv);
+                                        aiDiv.reasoningDiv = rDiv;
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
+            } catch(err) {
+                aiDiv.contentDiv.innerHTML = '❌ 网络错误: ' + err.message;
+            } finally {
+                isLoading = false;
+                loading.classList.remove('active');
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // === 事件绑定 ===
+        settingsBtn.addEventListener('click', openSettings);
+        modalClose.addEventListener('click', closeSettings);
+        modalCloseBtn.addEventListener('click', closeSettings);
+        settingsModal.addEventListener('click', function(e) {
+            if (e.target === settingsModal) closeSettings();
+        });
+
+        addModelBtn.addEventListener('click', function() { openEditForm('__new__'); });
+        formCancel.addEventListener('click', function() { modelForm.style.display = 'none'; });
+        formSave.addEventListener('click', saveModelForm);
+
+        clearBtn.addEventListener('click', async function() {
+            await fetch('/api/conversation', { method: 'DELETE' });
+            chatBox.innerHTML = '<div class="message system">对话已清空，开始新对话吧！</div>';
+            input.focus();
+        });
+
+        exportBtn.addEventListener('click', function() {
+            window.open('/api/export', '_blank');
+        });
+
+        promptSelect.addEventListener('change', function() {
+            const val = promptSelect.value;
+            if (val) {
+                input.value = val;
+                input.style.height = 'auto';
+                input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+                input.focus();
+                promptSelect.value = '';
+            }
+        });
+
+        sendBtn.addEventListener('click', sendMessage);
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 初始加载
+        loadModels();
+        loadPrompts();
+        updateWorkDir();
+    </script>
+</body>
+</html>

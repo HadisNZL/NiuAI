@@ -1,0 +1,18 @@
+{
+  "deepseek": {
+    "name": "DeepSeek Coder",
+    "provider": "openai",
+    "api_key": "YOUR_DEEPSEEK_API_KEY",
+    "api_base": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash"
+  },
+  "doubao": {
+    "name": "Doubao-Code",
+    "provider": "openai",
+    "api_key": "YOUR_DOUBAO_API_KEY",
+    "api_base": "https://ark.cn-beijing.volces.com/api/v3",
+    "model": "ep-20260605180645-xcfkc",
+    "max_tokens": 32768,
+    "temperature": 0.1
+  }
+}

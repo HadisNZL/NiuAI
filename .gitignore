@@ -1,0 +1,23 @@
+# 环境变量
+.env
+.env.*
+*.env.local
+
+# 模型配置文件（可能包含 API Key）
+models.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 日志
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
