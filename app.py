@@ -4,6 +4,7 @@ import shutil
 import re
 import difflib
 import ast
+import sqlite3
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, Response
 from openai import OpenAI
@@ -295,25 +296,68 @@ def handle_file_command(cmd, user_message):
 
 app = Flask(__name__)
 
-# 会话管理：{session_id: {model_key: [messages]}}
-sessions = {}
+# 提示词模板
+PROMPT_TEMPLATES = [
+    {"name": "代码审查", "prompt": "请审查以下代码，指出潜在问题和改进建议"},
+    {"name": "代码解释", "prompt": "请详细解释以下代码的功能和实现逻辑"},
+    {"name": "Bug 修复", "prompt": "以下代码出现了问题，请帮我分析并修复"},
+    {"name": "性能优化", "prompt": "请分析以下代码的性能问题，并提供优化建议"},
+    {"name": "重构建议", "prompt": "请对以下代码提出重构建议，使其更易维护"},
+]
+
+# SQLite 数据库初始化
+DB_PATH = "chat_sessions.db"
+
+def init_db():
+    """初始化数据库"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  session_id TEXT NOT NULL,
+                  model_key TEXT NOT NULL,
+                  role TEXT NOT NULL,
+                  content TEXT NOT NULL,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# 当前会话ID
 current_session_id = "default"
 
-# 按模型隔离对话历史（废弃，改用 sessions）
-conversations = {}
-
 def get_session_conversations():
-    """获取当前会话的对话历史"""
-    if current_session_id not in sessions:
-        sessions[current_session_id] = {}
-    return sessions[current_session_id]
+    """获取当前会话的对话历史（从数据库）"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''SELECT model_key, role, content FROM messages
+                 WHERE session_id = ? ORDER BY id ASC''', (current_session_id,))
+    rows = c.fetchall()
+    conn.close()
+
+    # 按模型分组
+    conversations = {}
+    for model_key, role, content in rows:
+        if model_key not in conversations:
+            conversations[model_key] = []
+        conversations[model_key].append({"role": role, "content": content})
+
+    return conversations
 
 def get_history(model_key):
     """获取指定模型在当前会话的对话历史"""
     convs = get_session_conversations()
-    if model_key not in convs:
-        convs[model_key] = []
-    return convs[model_key]
+    return convs.get(model_key, [])
+
+def save_message(session_id, model_key, role, content):
+    """保存消息到数据库"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''INSERT INTO messages (session_id, model_key, role, content)
+                 VALUES (?, ?, ?, ?)''', (session_id, model_key, role, content))
+    conn.commit()
+    conn.close()
 
 
 def get_client(model_key):
@@ -600,15 +644,29 @@ def file_diff_api():
 
 @app.route("/api/sessions", methods=["GET"])
 def list_sessions():
-    """获取所有会话列表"""
+    """获取所有会话列表（从数据库）"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''SELECT session_id, COUNT(*) as msg_count
+                 FROM messages GROUP BY session_id''')
+    rows = c.fetchall()
+    conn.close()
+
     session_list = []
-    for sid, convs in sessions.items():
-        total_msgs = sum(len(msgs) for msgs in convs.values())
+    session_ids = set([row[0] for row in rows])
+
+    # 确保当前会话在列表中
+    if current_session_id not in session_ids:
+        session_ids.add(current_session_id)
+
+    for sid in session_ids:
+        msg_count = next((row[1] for row in rows if row[0] == sid), 0)
         session_list.append({
             "id": sid,
-            "message_count": total_msgs,
+            "message_count": msg_count,
             "is_current": sid == current_session_id
         })
+
     return jsonify(session_list)
 
 
@@ -617,21 +675,22 @@ def switch_session(session_id):
     """切换到指定会话"""
     global current_session_id
     current_session_id = session_id
-    if session_id not in sessions:
-        sessions[session_id] = {}
     return jsonify({"status": "ok", "session_id": session_id})
 
 
 @app.route("/api/sessions/<session_id>", methods=["DELETE"])
 def delete_session(session_id):
-    """删除指定会话"""
+    """删除指定会话（从数据库）"""
     global current_session_id
-    if session_id in sessions:
-        del sessions[session_id]
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
+    conn.commit()
+    conn.close()
+
     if current_session_id == session_id:
         current_session_id = "default"
-        if "default" not in sessions:
-            sessions["default"] = {}
     return jsonify({"status": "ok"})
 
 
@@ -642,6 +701,29 @@ def get_current_session():
         "session_id": current_session_id,
         "conversations": get_session_conversations()
     })
+
+
+@app.route("/api/sessions/current/clear", methods=["POST"])
+def clear_current_session():
+    """清空当前会话的对话历史"""
+    data = request.get_json() or {}
+    model_key = data.get("model")
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    if model_key:
+        # 只清空指定模型的历史
+        c.execute('DELETE FROM messages WHERE session_id = ? AND model_key = ?',
+                  (current_session_id, model_key))
+    else:
+        # 清空整个会话
+        c.execute('DELETE FROM messages WHERE session_id = ?', (current_session_id,))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -665,6 +747,7 @@ def chat():
 
     if user_message:
         history.append({"role": "user", "content": user_message})
+        save_message(current_session_id, model_key, "user", user_message)
 
     try:
         client = get_client(model_key)
@@ -697,8 +780,8 @@ def chat():
                     full_content += delta.content
                     yield json.dumps({"content": delta.content}) + "\n"
 
-            # 保存 AI 回复
-            history.append({"role": "assistant", "content": full_content})
+            # 保存 AI 回复到数据库
+            save_message(current_session_id, model_key, "assistant", full_content)
 
             # 检查 AI 回复中是否包含文件命令并自动执行
             lines = full_content.strip().split('\n')
@@ -709,8 +792,8 @@ def chat():
                     if is_cmd:
                         # 找到命令，执行并返回结果
                         yield json.dumps({"cmd_result": cmd_result, "work_dir": current_work_dir}) + "\n"
-                        # 将命令结果也添加到历史中
-                        history.append({"role": "system", "content": f"[命令执行结果]\n{cmd_result}"})
+                        # 将命令结果也保存到数据库
+                        save_message(current_session_id, model_key, "system", f"[命令执行结果]\n{cmd_result}")
 
         return Response(generate(), mimetype="text/event-stream")
 

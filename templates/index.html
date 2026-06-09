@@ -6,94 +6,145 @@
     <title>NIU AI</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
+        :root {
+            --bg-body: #f0f2f5;
+            --bg-container: white;
+            --bg-header: #fff;
+            --bg-chat: #fafafa;
+            --bg-input: white;
+            --bg-msg-user: #1677ff;
+            --bg-msg-assistant: white;
+            --bg-msg-system: #fffbe6;
+            --bg-code: #f5f5f5;
+            --bg-hover: #f0f0f0;
+            --border-color: #e8e8e8;
+            --text-primary: #1a1a1a;
+            --text-secondary: #999;
+            --text-msg-system: #ad8b00;
+            --shadow: 0 4px 24px rgba(0,0,0,0.1);
+        }
+
+        body.dark {
+            --bg-body: #1a1a1a;
+            --bg-container: #2d2d2d;
+            --bg-header: #2d2d2d;
+            --bg-chat: #252525;
+            --bg-input: #2d2d2d;
+            --bg-msg-user: #1677ff;
+            --bg-msg-assistant: #3a3a3a;
+            --bg-msg-system: #3d3d00;
+            --bg-code: #1f1f1f;
+            --bg-hover: #3a3a3a;
+            --border-color: #444;
+            --text-primary: #e8e8e8;
+            --text-secondary: #999;
+            --text-msg-system: #ffeb3b;
+            --shadow: 0 4px 24px rgba(0,0,0,0.5);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #f0f2f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        .app-container { width: 100%; max-width: 900px; height: 100vh; max-height: 850px; background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; margin: 20px; position: relative; }
-        .header { padding: 14px 20px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; background: #fff; gap: 8px; }
+        body { background: var(--bg-body); height: 100vh; display: flex; justify-content: center; align-items: center; transition: background 0.3s; }
+        .app-container { width: 100%; max-width: 900px; height: 100vh; max-height: 850px; background: var(--bg-container); border-radius: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; overflow: hidden; margin: 20px; position: relative; transition: all 0.3s; }
+        .header { padding: 14px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: var(--bg-header); gap: 8px; }
         .header-left { display: flex; align-items: center; gap: 12px; }
-        .header-left h1 { font-size: 17px; font-weight: 700; color: #1a1a1a; white-space: nowrap; }
-        .header-left .subtitle { font-size: 11px; color: #999; white-space: nowrap; }
+        .header-left h1 { font-size: 17px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+        .header-left .subtitle { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
         .header-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .settings-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; border-radius: 6px; transition: background 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
-        .settings-btn:hover { background: #f0f0f0; }
+        .settings-btn:hover { background: var(--bg-hover); }
         .model-selector { display: flex; align-items: center; gap: 6px; }
-        .model-selector select { padding: 5px 10px; border: 1px solid #d9d9d9; border-radius: 8px; background: white; font-size: 13px; cursor: pointer; outline: none; max-width: 170px; }
+        .model-selector select { padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-size: 13px; cursor: pointer; outline: none; max-width: 170px; }
         .model-selector select:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
-        .header-btn { padding: 5px 10px; background: #f5f5f5; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 12px; cursor: pointer; color: #333; transition: all 0.2s; white-space: nowrap; }
-        .header-btn:hover { background: #e8e8e8; }
-        .header-btn.export-btn { color: #1677ff; border-color: #1677ff; background: #e6f4ff; }
-        .header-btn.export-btn:hover { background: #bae0ff; }
+        .header-btn { padding: 5px 10px; background: var(--bg-hover); border: 1px solid var(--border-color); border-radius: 8px; font-size: 12px; cursor: pointer; color: var(--text-primary); transition: all 0.2s; white-space: nowrap; }
+        .header-btn:hover { opacity: 0.8; }
+        .header-btn.export-btn { color: #1677ff; border-color: #1677ff; background: rgba(22,119,255,0.1); }
 
-        .chat-box { flex: 1; overflow-y: auto; padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; background: #fafafa; }
+        .chat-box { flex: 1; overflow-y: auto; padding: 14px 20px; display: flex; flex-direction: column; gap: 10px; background: var(--bg-chat); }
         .message { max-width: 85%; padding: 10px 14px; border-radius: 12px; line-height: 1.6; font-size: 14px; word-wrap: break-word; }
-        .message.user { align-self: flex-end; background: #1677ff; color: white; border-bottom-right-radius: 4px; }
-        .message.assistant { align-self: flex-start; background: white; border: 1px solid #e8e8e8; border-bottom-left-radius: 4px; }
-        .message.system { align-self: center; background: #fffbe6; border: 1px solid #ffe58f; color: #ad8b00; font-size: 12px; padding: 6px 14px; text-align: center; max-width: 95%; }
+        .message.user { align-self: flex-end; background: var(--bg-msg-user); color: white; border-bottom-right-radius: 4px; }
+        .message.assistant { align-self: flex-start; background: var(--bg-msg-assistant); color: var(--text-primary); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; }
+        .message.system { align-self: center; background: var(--bg-msg-system); border: 1px solid var(--border-color); color: var(--text-msg-system); font-size: 12px; padding: 6px 14px; text-align: center; max-width: 95%; }
 
-        .message.assistant pre { background: #f5f5f5; border-radius: 8px; padding: 12px; overflow-x: auto; border: 1px solid #e8e8e8; margin: 8px 0; }
-        .message.assistant code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+        .message.assistant pre { background: var(--bg-code); border-radius: 8px; padding: 12px; overflow-x: auto; border: 1px solid var(--border-color); margin: 8px 0; }
+        .message.assistant code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: var(--bg-code); padding: 2px 6px; border-radius: 4px; }
         .message.assistant pre code { background: none; padding: 0; border-radius: 0; }
         .message.assistant p { margin: 4px 0; }
         .message.assistant ul, .message.assistant ol { padding-left: 20px; margin: 4px 0; }
         .message.assistant table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-        .message.assistant th, .message.assistant td { border: 1px solid #d9d9d9; padding: 5px 10px; }
-        .message.assistant th { background: #fafafa; font-weight: 600; }
-        .message.assistant blockquote { border-left: 3px solid #1677ff; padding-left: 12px; color: #666; margin: 8px 0; }
+        .message.assistant th, .message.assistant td { border: 1px solid var(--border-color); padding: 5px 10px; }
+        .message.assistant th { background: var(--bg-hover); font-weight: 600; }
+        .message.assistant blockquote { border-left: 3px solid #1677ff; padding-left: 12px; color: var(--text-secondary); margin: 8px 0; }
         .message.assistant h1, .message.assistant h2, .message.assistant h3 { margin: 10px 0 4px; font-weight: 600; }
         .message.assistant a { color: #1677ff; text-decoration: underline; }
 
-        .reasoning-block { background: #f0f5ff; border-left: 3px solid #1677ff; padding: 8px 12px; margin-bottom: 6px; border-radius: 0 8px 8px 0; font-size: 12px; color: #555; line-height: 1.5; }
-        .reasoning-block::before { content: "\f1a0 思考过程"; display: block; font-size: 11px; color: #1677ff; font-weight: 500; margin-bottom: 3px; }
+        .reasoning-block { background: rgba(22,119,255,0.1); border-left: 3px solid #1677ff; padding: 8px 12px; margin-bottom: 6px; border-radius: 0 8px 8px 0; font-size: 12px; color: var(--text-primary); line-height: 1.5; }
 
-        .input-area { padding: 10px 20px 14px; border-top: 1px solid #e8e8e8; background: white; }
+        .input-area { padding: 10px 20px 14px; border-top: 1px solid var(--border-color); background: var(--bg-input); }
         .toolbar { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
-        .toolbar span { font-size: 11px; color: #999; }
-        .toolbar select { padding: 3px 6px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 12px; background: white; cursor: pointer; outline: none; max-width: 150px; }
-        .toolbar .work-dir { font-size: 11px; color: #999; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; cursor: pointer; }
-        .toolbar .work-dir:hover { color: #1677ff; }
+        .toolbar span { font-size: 11px; color: var(--text-secondary); }
+        .toolbar select { padding: 3px 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: var(--bg-input); color: var(--text-primary); cursor: pointer; outline: none; max-width: 150px; }
+        .toolbar .work-dir { font-size: 11px; color: var(--text-secondary); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; cursor: pointer; }
 
         .input-row { display: flex; gap: 8px; align-items: flex-end; }
-        .input-row textarea { flex: 1; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 10px; font-size: 14px; resize: none; outline: none; font-family: inherit; min-height: 40px; max-height: 100px; line-height: 1.5; }
+        .input-row textarea { flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 14px; resize: none; outline: none; font-family: inherit; min-height: 40px; max-height: 100px; line-height: 1.5; background: var(--bg-input); color: var(--text-primary); }
         .input-row textarea:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
         .input-row button { padding: 8px 20px; background: #1677ff; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s; align-self: flex-end; }
         .input-row button:hover { background: #4096ff; }
         .input-row button:disabled { background: #a0c4ff; cursor: not-allowed; }
-        .input-row .clear-btn { background: transparent; color: #999; padding: 8px 6px; font-size: 16px; }
+        .input-row .clear-btn { background: transparent; color: var(--text-secondary); padding: 8px 6px; font-size: 16px; }
         .input-row .clear-btn:hover { color: #ff4d4f; background: transparent; }
 
-        .loading-indicator { align-self: center; color: #999; font-size: 13px; display: none; padding: 4px; }
+        .loading-indicator { align-self: center; color: var(--text-secondary); font-size: 13px; display: none; padding: 4px; }
+
+        .modal-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; border-radius: 16px; }
+        .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+        .modal { background: var(--bg-container); border-radius: 16px; width: 90%; max-width: 520px; max-height: 85%; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+        .modal-header .close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); padding: 4px; line-height: 1; }
+        .modal-header .close-btn:hover { color: var(--text-primary); }
+        .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; }
+        .model-list { margin-bottom: 16px; }
+        .model-list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; background: var(--bg-input); }
+        .model-list-item:hover { border-color: #1677ff; background: rgba(22,119,255,0.05); }
+        .model-list-item .model-name { font-weight: 500; font-size: 14px; color: var(--text-primary); }
+        .model-list-item .model-detail { font-size: 11px; color: var(--text-secondary); }
+        .reasoning-block::before { content: "\f1a0 思考过程"; display: block; font-size: 11px; color: #1677ff; font-weight: 500; margin-bottom: 3px; }
+
+        .loading-indicator { align-self: center; color: var(--text-secondary); font-size: 13px; display: none; padding: 4px; }
         .loading-indicator.active { display: block; }
 
         /* === 设置面板（Modal） === */
-        .modal-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; border-radius: 16px; }
+        .modal-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; border-radius: 16px; }
         .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
-        .modal { background: white; border-radius: 16px; width: 90%; max-width: 520px; max-height: 85%; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
-        .modal-header { padding: 16px 20px; border-bottom: 1px solid #e8e8e8; display: flex; justify-content: space-between; align-items: center; }
-        .modal-header h2 { font-size: 16px; font-weight: 600; }
-        .modal-header .close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #999; padding: 4px; line-height: 1; }
-        .modal-header .close-btn:hover { color: #333; }
+        .modal { background: var(--bg-container); border-radius: 16px; width: 90%; max-width: 520px; max-height: 85%; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 40px rgba(0,0,0,0.4); }
+        .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-header h2 { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+        .modal-header .close-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); padding: 4px; line-height: 1; }
+        .modal-header .close-btn:hover { color: var(--text-primary); }
         .modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
-        .modal-footer { padding: 12px 20px; border-top: 1px solid #e8e8e8; display: flex; justify-content: flex-end; gap: 8px; }
+        .modal-footer { padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; }
         .model-list { margin-bottom: 16px; }
-        .model-list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid #e8e8e8; border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; }
-        .model-list-item:hover { border-color: #1677ff; background: #f6f8ff; }
-        .model-list-item .model-name { font-weight: 500; font-size: 14px; }
-        .model-list-item .model-detail { font-size: 11px; color: #999; }
+        .model-list-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 6px; cursor: pointer; transition: all 0.2s; background: var(--bg-input); }
+        .model-list-item:hover { border-color: #1677ff; background: rgba(22,119,255,0.1); }
+        .model-list-item .model-name { font-weight: 500; font-size: 14px; color: var(--text-primary); }
+        .model-list-item .model-detail { font-size: 11px; color: var(--text-secondary); }
         .model-list-item .del-btn { background: none; border: none; color: #ff4d4f; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
-        .model-list-item .del-btn:hover { background: #fff1f0; }
-        .add-btn { width: 100%; padding: 8px; border: 1px dashed #d9d9d9; border-radius: 8px; background: none; color: #1677ff; font-size: 13px; cursor: pointer; transition: all 0.2s; }
-        .add-btn:hover { border-color: #1677ff; background: #f6f8ff; }
+        .model-list-item .del-btn:hover { background: rgba(255,77,79,0.1); }
+        .add-btn { width: 100%; padding: 8px; border: 1px dashed var(--border-color); border-radius: 8px; background: none; color: #1677ff; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .add-btn:hover { border-color: #1677ff; background: rgba(22,119,255,0.05); }
 
         .form-group { margin-bottom: 12px; }
-        .form-group label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 13px; outline: none; }
-        .form-group input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
+        .form-group label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
+        .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 13px; outline: none; background: var(--bg-input); color: var(--text-primary); }
+        .form-group input:focus, .form-group select:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,0.1); }
         .form-row { display: flex; gap: 8px; }
         .form-row .form-group { flex: 1; }
         .btn-primary { padding: 7px 18px; background: #1677ff; color: white; border: none; border-radius: 8px; font-size: 13px; cursor: pointer; }
         .btn-primary:hover { background: #4096ff; }
-        .btn-default { padding: 7px 18px; background: #f5f5f5; border: 1px solid #d9d9d9; color: #333; border-radius: 8px; font-size: 13px; cursor: pointer; }
-        .btn-default:hover { background: #e8e8e8; }
+        .btn-default { padding: 7px 18px; background: var(--bg-hover); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 8px; font-size: 13px; cursor: pointer; }
+        .btn-default:hover { opacity: 0.8; }
 
         @media (max-width: 600px) {
             .app-container { max-height: 100vh; margin: 0; border-radius: 0; }
@@ -101,25 +152,13 @@
             .message { max-width: 92%; }
         }
 
-        /* === 项目浏览器 === */
-        .project-browser-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px; border-radius: 6px; transition: background 0.2s; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
-        .project-browser-btn:hover { background: #f0f0f0; }
-        .project-browser { position: absolute; left: 20px; top: 60px; bottom: 80px; width: 250px; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); display: none; flex-direction: column; z-index: 50; }
-        .project-browser.active { display: flex; }
-        .project-browser-header { padding: 12px; border-bottom: 1px solid #e8e8e8; font-weight: 600; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
-        .project-browser-body { flex: 1; overflow-y: auto; padding: 8px; }
-        .file-item { padding: 6px 10px; font-size: 12px; cursor: pointer; border-radius: 6px; display: flex; align-items: center; gap: 6px; transition: background 0.2s; }
-        .file-item:hover { background: #f5f5f5; }
-        .file-item.file { color: #333; }
-        .file-item.folder { color: #666; font-weight: 500; }
-
         /* === Diff 预览 === */
-        .diff-container { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 8px; padding: 12px; margin: 8px 0; font-family: 'SF Mono', monospace; font-size: 12px; }
-        .diff-header { font-weight: 600; margin-bottom: 8px; color: #666; }
+        .diff-container { background: var(--bg-code); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin: 8px 0; font-family: 'SF Mono', monospace; font-size: 12px; }
+        .diff-header { font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); }
         .diff-line { padding: 2px 4px; line-height: 1.4; }
-        .diff-line.add { background: #d4f8d4; color: #0a5; }
-        .diff-line.remove { background: #ffd4d4; color: #d00; }
-        .diff-line.context { color: #666; }
+        .diff-line.add { background: rgba(0,170,85,0.2); color: #0a5; }
+        .diff-line.remove { background: rgba(221,0,0,0.2); color: #d00; }
+        .diff-line.context { color: var(--text-secondary); }
     </style>
 </head>
 <body>
@@ -131,7 +170,7 @@
             </div>
             <div class="header-controls">
                 <div class="model-selector">
-                    <button class="project-browser-btn" id="project-btn" title="项目浏览器">📂</button>
+                    <button class="settings-btn" id="theme-btn" title="切换主题">🌓</button>
                     <button class="settings-btn" id="sessions-btn" title="会话管理">💬</button>
                     <button class="settings-btn" id="settings-btn" title="模型设置">⚙️</button>
                     <select id="model-select"><option value="">加载中...</option></select>
@@ -153,17 +192,6 @@
                     </div>
                     <div id="sessions-list"></div>
                 </div>
-            </div>
-        </div>
-
-        <!-- 项目浏览器 -->
-        <div class="project-browser" id="project-browser">
-            <div class="project-browser-header">
-                <span>📂 项目文件</span>
-                <button class="close-btn" id="project-close">×</button>
-            </div>
-            <div class="project-browser-body" id="project-files">
-                <div style="text-align:center;color:#999;padding:20px;">加载中...</div>
             </div>
         </div>
 
@@ -281,21 +309,36 @@
         const formSave = document.getElementById('form-save');
         const formCancel = document.getElementById('form-cancel');
         const workDir = document.getElementById('work-dir');
-        const projectBtn = document.getElementById('project-btn');
-        const projectBrowser = document.getElementById('project-browser');
-        const projectClose = document.getElementById('project-close');
-        const projectFiles = document.getElementById('project-files');
         const sessionsBtn = document.getElementById('sessions-btn');
         const sessionsModal = document.getElementById('sessions-modal');
         const sessionsClose = document.getElementById('sessions-close');
         const sessionsList = document.getElementById('sessions-list');
         const newSessionBtn = document.getElementById('new-session-btn');
+        const themeBtn = document.getElementById('theme-btn');
 
         let currentSessionId = 'default';
 
         if (typeof marked !== 'undefined') {
             marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
         }
+
+        // === 主题切换 ===
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark');
+                themeBtn.textContent = '☀️';
+            }
+        }
+
+        themeBtn.addEventListener('click', function() {
+            document.body.classList.toggle('dark');
+            const isDark = document.body.classList.contains('dark');
+            themeBtn.textContent = isDark ? '☀️' : '🌓';
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        });
+
+        initTheme();
 
         // === 会话管理 ===
         async function loadSessions() {
@@ -333,7 +376,34 @@
             try {
                 await fetch(`/api/sessions/${sessionId}`, {method: 'POST'});
                 currentSessionId = sessionId;
-                chatBox.innerHTML = '<div class="message system">已切换到会话: ' + sessionId + '</div>';
+
+                // 获取当前会话的历史对话
+                const res = await fetch('/api/sessions/current');
+                const data = await res.json();
+
+                chatBox.innerHTML = '';
+
+                // 获取当前选中模型的对话历史
+                const currentModel = modelSelect.value;
+                const history = data.conversations[currentModel] || [];
+
+                if (history.length === 0) {
+                    chatBox.innerHTML = '<div class="message system">已切换到会话: ' + sessionId + '</div>';
+                } else {
+                    // 恢复所有历史消息
+                    history.forEach(msg => {
+                        const div = document.createElement('div');
+                        div.className = 'message ' + msg.role;
+                        if (msg.role === 'assistant' && typeof marked !== 'undefined') {
+                            div.innerHTML = marked.parse(msg.content);
+                        } else {
+                            div.textContent = msg.content;
+                        }
+                        chatBox.appendChild(div);
+                    });
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                }
+
                 sessionsModal.classList.remove('active');
                 await loadSessions();
             } catch(err) {
@@ -368,46 +438,6 @@
 
         sessionsClose.addEventListener('click', function() {
             sessionsModal.classList.remove('active');
-        });
-
-        // === 项目浏览器 ===
-        async function loadProjectStructure() {
-            try {
-                const res = await fetch('/api/project/structure');
-                const data = await res.json();
-                projectFiles.innerHTML = '';
-
-                if (data.files && data.files.length > 0) {
-                    data.files.forEach(file => {
-                        const item = document.createElement('div');
-                        item.className = 'file-item file';
-                        item.textContent = `📄 ${file.path}`;
-                        item.title = file.path;
-                        item.onclick = () => insertFileReference(file.path);
-                        projectFiles.appendChild(item);
-                    });
-                } else {
-                    projectFiles.innerHTML = '<div style="text-align:center;color:#999;padding:20px;">无文件</div>';
-                }
-            } catch(err) {
-                projectFiles.innerHTML = '<div style="text-align:center;color:#f00;padding:20px;">加载失败</div>';
-            }
-        }
-
-        function insertFileReference(path) {
-            input.value += (input.value ? '\n' : '') + `查看 ${path}`;
-            input.focus();
-        }
-
-        projectBtn.addEventListener('click', function() {
-            projectBrowser.classList.toggle('active');
-            if (projectBrowser.classList.contains('active')) {
-                loadProjectStructure();
-            }
-        });
-
-        projectClose.addEventListener('click', function() {
-            projectBrowser.classList.remove('active');
         });
 
         // === 模型管理 ===
@@ -740,7 +770,12 @@
         formSave.addEventListener('click', saveModelForm);
 
         clearBtn.addEventListener('click', async function() {
-            await fetch('/api/conversation', { method: 'DELETE' });
+            if (!confirm('确定清空当前会话的对话历史吗？')) return;
+            await fetch('/api/sessions/current/clear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({model: modelSelect.value})
+            });
             chatBox.innerHTML = '<div class="message system">对话已清空，开始新对话吧！</div>';
             input.focus();
         });

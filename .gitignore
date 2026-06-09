@@ -7,6 +7,10 @@
 # 模型配置文件（可能包含 API Key）
 models.json
 
+# 数据库文件
+chat_sessions.db
+*.db
+
 # Python
 __pycache__/
 *.pyc
