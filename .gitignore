@@ -1,7 +1,8 @@
 # 环境变量
 .env
-.env.*
-*.env.local
+.env.local
+.env.*.local
+!.env.example
 
 # 模型配置文件（可能包含 API Key）
 models.json

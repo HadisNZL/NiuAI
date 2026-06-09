@@ -2,6 +2,9 @@ import json
 import os
 import shutil
 import re
+import difflib
+import ast
+from pathlib import Path
 from flask import Flask, request, jsonify, render_template, Response
 from openai import OpenAI
 from config import MODELS, save_models
@@ -12,6 +15,87 @@ current_work_dir = "/Users/niuzilin/VSCodeProjects/Test01"
 
 # 权限管理：存储用户授权的路径
 authorized_paths = {ALLOWED_ROOT}  # 默认允许用户主目录
+
+# 项目结构缓存
+project_structure = {}
+recent_modifications = []
+
+def scan_project_structure(root_dir, max_depth=3):
+    """扫描项目结构，提取文件信息"""
+    structure = {
+        "files": [],
+        "functions": {},
+        "classes": {},
+        "imports": {}
+    }
+
+    ignore_patterns = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', '.env'}
+
+    try:
+        for root, dirs, files in os.walk(root_dir):
+            # 过滤忽略的目录
+            dirs[:] = [d for d in dirs if d not in ignore_patterns]
+
+            depth = root.replace(root_dir, '').count(os.sep)
+            if depth > max_depth:
+                continue
+
+            for file in files:
+                if file.startswith('.'):
+                    continue
+
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, root_dir)
+
+                structure["files"].append({
+                    "path": rel_path,
+                    "name": file,
+                    "size": os.path.getsize(file_path),
+                    "ext": os.path.splitext(file)[1]
+                })
+
+                # 解析 Python 文件
+                if file.endswith('.py'):
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            tree = ast.parse(f.read())
+
+                        functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+                        classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+
+                        if functions:
+                            structure["functions"][rel_path] = functions
+                        if classes:
+                            structure["classes"][rel_path] = classes
+                    except:
+                        pass
+    except Exception as e:
+        print(f"扫描项目失败: {e}")
+
+    return structure
+
+def get_project_context():
+    """获取项目上下文信息"""
+    global project_structure
+
+    if not project_structure:
+        project_structure = scan_project_structure(current_work_dir)
+
+    # 生成简洁的项目摘要
+    total_files = len(project_structure["files"])
+    py_files = len([f for f in project_structure["files"] if f["ext"] == ".py"])
+
+    context = f"项目文件总数: {total_files}, Python文件: {py_files}\n"
+
+    # 列出主要文件
+    main_files = [f["path"] for f in project_structure["files"][:20]]
+    context += "主要文件:\n" + "\n".join(f"  - {f}" for f in main_files)
+
+    remaining = len(project_structure["files"]) - 20
+    if remaining > 0:
+        context += f"\n  ... 还有 {remaining} 个文件"
+
+    return context
 
 def is_path_authorized(path):
     """检查路径是否在已授权范围内"""
@@ -147,6 +231,64 @@ def handle_file_command(cmd, user_message):
         except Exception as e:
             return f"❌ 查找失败: {str(e)}", True
 
+    # 写入文件: 写入 <file> <content>
+    m = re.match(r'^(写入|write)\s+(.+?)\s+(.+)$', msg, re.DOTALL)
+    if m:
+        filename = m.group(2).strip()
+        content = m.group(3).strip()
+        target_path = safe_path(filename)
+        if not is_path_authorized(os.path.dirname(target_path)):
+            return request_path_authorization(target_path), True
+        try:
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            recent_modifications.append({"action": "write", "path": target_path})
+            return f"✅ 已写入文件: {target_path}", True
+        except Exception as e:
+            return f"❌ 写入失败: {str(e)}", True
+
+    # 创建文件: 创建 <file>
+    m = re.match(r'^(创建|create|touch)\s+(.+)$', msg)
+    if m:
+        filename = m.group(2).strip()
+        target_path = safe_path(filename)
+        if not is_path_authorized(os.path.dirname(target_path)):
+            return request_path_authorization(target_path), True
+        try:
+            Path(target_path).touch()
+            recent_modifications.append({"action": "create", "path": target_path})
+            return f"✅ 已创建文件: {target_path}", True
+        except Exception as e:
+            return f"❌ 创建失败: {str(e)}", True
+
+    # 删除文件: 删除 <file>
+    m = re.match(r'^(删除|delete|rm)\s+(.+)$', msg)
+    if m:
+        filename = m.group(2).strip()
+        target_path = safe_path(filename)
+        if not is_path_authorized(target_path):
+            return request_path_authorization(target_path), True
+        try:
+            if os.path.isfile(target_path):
+                os.remove(target_path)
+                recent_modifications.append({"action": "delete", "path": target_path})
+                return f"✅ 已删除文件: {target_path}", True
+            else:
+                return f"❌ 文件不存在: {target_path}", True
+        except Exception as e:
+            return f"❌ 删除失败: {str(e)}", True
+
+    # 查看项目结构: 项目结构 或 tree
+    if msg in ('项目结构', 'tree', 'structure'):
+        if not is_path_authorized(current_work_dir):
+            return request_path_authorization(current_work_dir), True
+        global project_structure
+        project_structure = scan_project_structure(current_work_dir)
+        files_list = "\n".join(f"  - {f['path']}" for f in project_structure["files"][:50])
+        if len(project_structure["files"]) > 50:
+            files_list += f"\n  ... 还有 {len(project_structure['files']) - 50} 个文件"
+        return f"📂 项目结构 ({len(project_structure['files'])} 个文件):\n{files_list}", True
+
     # 不是文件命令
     return None, False
 
@@ -193,25 +335,42 @@ def build_messages(model_key, user_message):
     model_display_name = cfg.get("name", model_key)
     model_api_name = cfg.get("model", "")
 
+    # 获取项目上下文
+    project_ctx = get_project_context()
+
+    # 最近修改
+    recent_mods = ""
+    if recent_modifications:
+        recent_mods = "\n最近修改的文件:\n" + "\n".join(
+            f"  - {m['action']}: {m['path']}"
+            for m in recent_modifications[-5:]
+        )
+
     system_content = (
-        f"你是一个有用的AI助手，具备文件系统访问能力。"
+        f"你是一个有用的AI编程助手，具备完整的文件系统访问和编辑能力。"
         f"你当前正在被调用的模型是：{model_display_name}（API模型名：{model_api_name}）。"
-        f"如果用户问你在用什么模型，请如实回答你正在被调用的模型名称。"
-        f"\n\n## 文件操作能力\n"
-        f"当用户询问文件或目录时，你可以直接使用命令查看，而不是说无法访问。\n"
+        f"\n\n## 项目信息\n"
         f"当前工作目录：{current_work_dir}\n"
-        f"已授权路径：{', '.join(sorted(authorized_paths))}\n"
-        f"\n你需要直接在回复中使用这些命令（单独一行）：\n"
-        f"- 列出 或 ls - 列出当前目录内容\n"
-        f"- 进入 <路径> 或 cd <路径> - 切换目录\n"
-        f"- 查看 <文件> 或 cat <文件> - 查看文件内容\n"
-        f"- 查找 <关键词> 或 find <关键词> - 查找文件\n"
-        f"- 当前路径 或 pwd - 显示当前路径\n"
-        f"\n重要提示：\n"
-        f"1. 当用户问'某个目录有什么文件'时，先用'cd 目录'切换，再用'ls'列出\n"
-        f"2. 当用户问'查看某个文件'时，直接用'cat 文件路径'\n"
-        f"3. 命令必须单独一行，不要加在句子中间\n"
-        f"4. 如果路径未授权会提示，告诉用户需要授权\n"
+        f"{project_ctx}"
+        f"{recent_mods}\n"
+        f"\n## 文件操作能力\n"
+        f"你可以直接使用以下命令操作文件（命令必须单独一行）：\n"
+        f"\n查看操作：\n"
+        f"- 列出 / ls - 列出当前目录内容\n"
+        f"- 进入 <路径> / cd <路径> - 切换目录\n"
+        f"- 查看 <文件> / cat <文件> - 查看文件内容\n"
+        f"- 查找 <关键词> / find <关键词> - 查找文件\n"
+        f"- 项目结构 / tree - 查看项目结构\n"
+        f"- 当前路径 / pwd - 显示当前路径\n"
+        f"\n编辑操作：\n"
+        f"- 写入 <文件> <内容> - 创建或覆盖文件\n"
+        f"- 创建 <文件> - 创建空文件\n"
+        f"- 删除 <文件> - 删除文件\n"
+        f"\n使用建议：\n"
+        f"1. 修改代码前先用'查看'命令看原内容\n"
+        f"2. 理解项目结构后再进行修改\n"
+        f"3. 一次修改一个文件，确保逻辑清晰\n"
+        f"4. 命令必须单独一行，不要嵌入句子中\n"
         f"\n请使用 Markdown 格式回复。"
     )
 
@@ -354,6 +513,91 @@ def list_prompts():
 def get_current_dir():
     """返回当前工作目录"""
     return jsonify({"path": current_work_dir})
+
+
+@app.route("/api/project/structure")
+def get_project_structure():
+    """返回项目结构"""
+    global project_structure
+    if not project_structure:
+        project_structure = scan_project_structure(current_work_dir)
+    return jsonify(project_structure)
+
+
+@app.route("/api/file/read", methods=["POST"])
+def read_file_api():
+    """读取文件内容"""
+    data = request.get_json()
+    file_path = data.get("path", "")
+    target_path = safe_path(file_path)
+
+    if not is_path_authorized(target_path):
+        return jsonify({"error": "未授权访问"}), 403
+
+    try:
+        with open(target_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({"content": content, "path": target_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/file/write", methods=["POST"])
+def write_file_api():
+    """写入文件内容"""
+    data = request.get_json()
+    file_path = data.get("path", "")
+    content = data.get("content", "")
+    target_path = safe_path(file_path)
+
+    if not is_path_authorized(os.path.dirname(target_path)):
+        return jsonify({"error": "未授权访问"}), 403
+
+    try:
+        with open(target_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        recent_modifications.append({"action": "write", "path": target_path})
+        return jsonify({"status": "ok", "path": target_path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/file/diff", methods=["POST"])
+def file_diff_api():
+    """生成文件 diff"""
+    data = request.get_json()
+    file_path = data.get("path", "")
+    new_content = data.get("content", "")
+    target_path = safe_path(file_path)
+
+    if not is_path_authorized(target_path):
+        return jsonify({"error": "未授权访问"}), 403
+
+    try:
+        # 读取原文件
+        if os.path.exists(target_path):
+            with open(target_path, 'r', encoding='utf-8') as f:
+                old_content = f.read()
+        else:
+            old_content = ""
+
+        # 生成 diff
+        old_lines = old_content.splitlines(keepends=True)
+        new_lines = new_content.splitlines(keepends=True)
+        diff = list(difflib.unified_diff(
+            old_lines, new_lines,
+            fromfile=f"a/{file_path}",
+            tofile=f"b/{file_path}",
+            lineterm=''
+        ))
+
+        return jsonify({
+            "diff": diff,
+            "old_content": old_content,
+            "new_content": new_content
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/chat", methods=["POST"])
