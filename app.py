@@ -295,27 +295,25 @@ def handle_file_command(cmd, user_message):
 
 app = Flask(__name__)
 
-# 按模型隔离对话历史: {model_key: [messages]}
+# 会话管理：{session_id: {model_key: [messages]}}
+sessions = {}
+current_session_id = "default"
+
+# 按模型隔离对话历史（废弃，改用 sessions）
 conversations = {}
 
-# 预设提示词模板
-PROMPT_TEMPLATES = [
-    {"name": "📝 代码审查", "prompt": "请审查以下代码，指出潜在问题、性能优化建议和安全漏洞：\n\n"},
-    {"name": "✍️ 总结", "prompt": "请用简洁的语言总结以下内容的核心要点：\n\n"},
-    {"name": "🐛 Bug 修复", "prompt": "请帮我找找这个代码中的 bug 并给出修复方案：\n\n"},
-    {"name": "💡 解释代码", "prompt": "请逐行解释以下代码的工作原理：\n\n"},
-    {"name": "📄 写邮件", "prompt": "请帮我起草一封专业的邮件，主题为："},
-    {"name": "🎨 翻译", "prompt": "请将以下内容翻译成英文：\n\n"},
-    {"name": "📊 数据分析建议", "prompt": "针对以下数据/场景，请给出数据分析方案和建议：\n\n"},
-    {"name": "🔧 优化建议", "prompt": "请分析以下内容并提供优化建议：\n\n"},
-]
-
+def get_session_conversations():
+    """获取当前会话的对话历史"""
+    if current_session_id not in sessions:
+        sessions[current_session_id] = {}
+    return sessions[current_session_id]
 
 def get_history(model_key):
-    """获取指定模型的对话历史"""
-    if model_key not in conversations:
-        conversations[model_key] = []
-    return conversations[model_key]
+    """获取指定模型在当前会话的对话历史"""
+    convs = get_session_conversations()
+    if model_key not in convs:
+        convs[model_key] = []
+    return convs[model_key]
 
 
 def get_client(model_key):
@@ -598,6 +596,52 @@ def file_diff_api():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/sessions", methods=["GET"])
+def list_sessions():
+    """获取所有会话列表"""
+    session_list = []
+    for sid, convs in sessions.items():
+        total_msgs = sum(len(msgs) for msgs in convs.values())
+        session_list.append({
+            "id": sid,
+            "message_count": total_msgs,
+            "is_current": sid == current_session_id
+        })
+    return jsonify(session_list)
+
+
+@app.route("/api/sessions/<session_id>", methods=["POST"])
+def switch_session(session_id):
+    """切换到指定会话"""
+    global current_session_id
+    current_session_id = session_id
+    if session_id not in sessions:
+        sessions[session_id] = {}
+    return jsonify({"status": "ok", "session_id": session_id})
+
+
+@app.route("/api/sessions/<session_id>", methods=["DELETE"])
+def delete_session(session_id):
+    """删除指定会话"""
+    global current_session_id
+    if session_id in sessions:
+        del sessions[session_id]
+    if current_session_id == session_id:
+        current_session_id = "default"
+        if "default" not in sessions:
+            sessions["default"] = {}
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/sessions/current", methods=["GET"])
+def get_current_session():
+    """获取当前会话ID和历史"""
+    return jsonify({
+        "session_id": current_session_id,
+        "conversations": get_session_conversations()
+    })
 
 
 @app.route("/api/chat", methods=["POST"])

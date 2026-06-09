@@ -132,10 +132,27 @@
             <div class="header-controls">
                 <div class="model-selector">
                     <button class="project-browser-btn" id="project-btn" title="项目浏览器">📂</button>
+                    <button class="settings-btn" id="sessions-btn" title="会话管理">💬</button>
                     <button class="settings-btn" id="settings-btn" title="模型设置">⚙️</button>
                     <select id="model-select"><option value="">加载中...</option></select>
                 </div>
                 <button class="header-btn export-btn" id="export-btn" title="导出对话">📥 导出</button>
+            </div>
+        </div>
+
+        <!-- 会话管理面板 -->
+        <div class="modal-overlay" id="sessions-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>💬 会话管理</h2>
+                    <button class="close-btn" id="sessions-close">×</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom:16px;">
+                        <button class="add-btn" id="new-session-btn">➕ 新建会话</button>
+                    </div>
+                    <div id="sessions-list"></div>
+                </div>
             </div>
         </div>
 
@@ -268,10 +285,90 @@
         const projectBrowser = document.getElementById('project-browser');
         const projectClose = document.getElementById('project-close');
         const projectFiles = document.getElementById('project-files');
+        const sessionsBtn = document.getElementById('sessions-btn');
+        const sessionsModal = document.getElementById('sessions-modal');
+        const sessionsClose = document.getElementById('sessions-close');
+        const sessionsList = document.getElementById('sessions-list');
+        const newSessionBtn = document.getElementById('new-session-btn');
+
+        let currentSessionId = 'default';
 
         if (typeof marked !== 'undefined') {
             marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
         }
+
+        // === 会话管理 ===
+        async function loadSessions() {
+            try {
+                const res = await fetch('/api/sessions');
+                const sessions = await res.json();
+                sessionsList.innerHTML = '';
+
+                sessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = 'model-list-item';
+                    item.innerHTML = `
+                        <div>
+                            <div class="model-name">${session.is_current ? '✓ ' : ''}会话: ${session.id}</div>
+                            <div class="model-detail">${session.message_count} 条消息</div>
+                        </div>
+                        <button class="del-btn" onclick="deleteSession('${session.id}')">🗑️</button>
+                    `;
+                    if (!session.is_current) {
+                        item.onclick = (e) => {
+                            if (!e.target.classList.contains('del-btn')) {
+                                switchSession(session.id);
+                            }
+                        };
+                        item.style.cursor = 'pointer';
+                    }
+                    sessionsList.appendChild(item);
+                });
+            } catch(err) {
+                sessionsList.innerHTML = '<div style="color:#f00;">加载失败</div>';
+            }
+        }
+
+        async function switchSession(sessionId) {
+            try {
+                await fetch(`/api/sessions/${sessionId}`, {method: 'POST'});
+                currentSessionId = sessionId;
+                chatBox.innerHTML = '<div class="message system">已切换到会话: ' + sessionId + '</div>';
+                sessionsModal.classList.remove('active');
+                await loadSessions();
+            } catch(err) {
+                alert('切换失败: ' + err.message);
+            }
+        }
+
+        async function deleteSession(sessionId) {
+            if (!confirm('确定删除会话 "' + sessionId + '"？')) return;
+            try {
+                await fetch(`/api/sessions/${sessionId}`, {method: 'DELETE'});
+                if (sessionId === currentSessionId) {
+                    currentSessionId = 'default';
+                    chatBox.innerHTML = '<div class="message system">会话已删除，切换到默认会话</div>';
+                }
+                await loadSessions();
+            } catch(err) {
+                alert('删除失败: ' + err.message);
+            }
+        }
+
+        newSessionBtn.addEventListener('click', async function() {
+            const name = prompt('输入新会话名称:');
+            if (!name) return;
+            await switchSession(name);
+        });
+
+        sessionsBtn.addEventListener('click', function() {
+            sessionsModal.classList.add('active');
+            loadSessions();
+        });
+
+        sessionsClose.addEventListener('click', function() {
+            sessionsModal.classList.remove('active');
+        });
 
         // === 项目浏览器 ===
         async function loadProjectStructure() {
