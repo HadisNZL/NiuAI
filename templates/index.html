@@ -83,7 +83,6 @@
         .toolbar { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
         .toolbar span { font-size: 11px; color: var(--text-secondary); }
         .toolbar select { padding: 3px 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; background: var(--bg-input); color: var(--text-primary); cursor: pointer; outline: none; max-width: 150px; }
-        .toolbar .work-dir { font-size: 11px; color: var(--text-secondary); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; cursor: pointer; }
 
         .input-row { display: flex; gap: 8px; align-items: flex-end; }
         .input-row textarea { flex: 1; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 14px; resize: none; outline: none; font-family: inherit; min-height: 40px; max-height: 100px; line-height: 1.5; background: var(--bg-input); color: var(--text-primary); }
@@ -205,7 +204,6 @@
             <div class="toolbar">
                 <span>快捷提示词：</span>
                 <select id="prompt-select"><option value="">— 选择模板 —</option></select>
-                <span class="work-dir" id="work-dir" title="点击复制路径">📁 ~</span>
             </div>
             <div class="input-row">
                 <button class="clear-btn" id="clear-btn" title="清空对话">🗑️</button>
@@ -308,7 +306,6 @@
         const formTemp = document.getElementById('form-temp');
         const formSave = document.getElementById('form-save');
         const formCancel = document.getElementById('form-cancel');
-        const workDir = document.getElementById('work-dir');
         const sessionsBtn = document.getElementById('sessions-btn');
         const sessionsModal = document.getElementById('sessions-modal');
         const sessionsClose = document.getElementById('sessions-close');
@@ -470,32 +467,6 @@
                 });
             } catch(err) {}
         }
-
-        async function updateWorkDir() {
-            try {
-                const res = await fetch('/api/current_dir');
-                const data = await res.json();
-                const el = document.getElementById('work-dir');
-                if (el) {
-                    const path = data.path.replace('/Users/', '~/');
-                    el.textContent = '📁 ' + path;
-                    el.title = data.path + ' (点击复制)';
-                }
-            } catch(e) {}
-        }
-
-        // 点击工作目录复制路径
-        document.addEventListener('click', function(e) {
-            const el = e.target.closest('#work-dir');
-            if (el) {
-                const path = el.title.replace(' (点击复制)', '');
-                navigator.clipboard.writeText(path).then(() => {
-                    const orig = el.textContent;
-                    el.textContent = '✅ 已复制';
-                    setTimeout(() => { el.textContent = orig; }, 1500);
-                }).catch(() => {});
-            }
-        });
 
         // === 设置面板 ===
         function openSettings() {
@@ -722,14 +693,6 @@
                                     // 显示命令执行结果
                                     const cmdDiv = appendMessage('system', data.cmd_result);
                                 }
-                                if (data.work_dir) {
-                                    const el = document.getElementById('work-dir');
-                                    if (el) {
-                                        const path = data.work_dir.replace('/Users/', '~/');
-                                        el.textContent = '📁 ' + path;
-                                        el.title = data.work_dir + ' (点击复制)';
-                                    }
-                                }
                                 if (data.reasoning) {
                                     if (aiDiv.reasoningDiv) {
                                         aiDiv.rawReasoning += data.reasoning;
@@ -806,7 +769,6 @@
         // 初始加载
         loadModels();
         loadPrompts();
-        updateWorkDir();
     </script>
 </body>
 </html>
