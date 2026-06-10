@@ -18,6 +18,29 @@ current_work_dir = "/Users/niuzilin/VSCodeProjects/Test01"
 # 权限管理：存储用户授权的路径
 authorized_paths = {ALLOWED_ROOT}  # 默认允许用户主目录
 
+# 命令白名单和黑名单
+COMMAND_WHITELIST = [
+    # Python
+    'pip', 'pip3', 'python', 'python3', 'pytest', 'pipenv',
+    # Node.js
+    'npm', 'yarn', 'pnpm', 'node',
+    # Git
+    'git',
+    # 构建工具
+    'make', 'cmake', 'cargo', 'go', 'mvn', 'gradle',
+    # 查看类命令
+    'ls', 'cat', 'pwd', 'echo', 'which', 'tree',
+]
+
+DANGEROUS_PATTERNS = [
+    'rm -rf /',
+    'sudo',
+    'chmod 777',
+    '>/dev/',
+    'mkfs',
+    'dd if=',
+]
+
 # 项目结构缓存
 project_structure = {}
 recent_modifications = []
@@ -188,28 +211,30 @@ def handle_file_command(cmd, user_message):
             return "❌ 系统拒绝访问（权限不足）", True
 
     # 查看文件: 查看 <file> 或 cat <file>
-    m = re.match(r'^(查看|cat|open|读取)\s+(.+)$', msg)
-    if m:
-        filename = m.group(2).strip()
-        target_path = safe_path(filename)
-        # 检查权限
-        if not is_path_authorized(target_path):
-            return request_path_authorization(target_path), True
-        if not os.path.isfile(target_path):
-            return f"❌ 文件不存在: {target_path}", True
-        try:
-            with open(target_path, 'r', encoding='utf-8') as f:
-                file_content = f.read()
-            max_len = 100000
-            if len(file_content) > max_len:
-                file_content = file_content[:max_len] + "\n\n... 文件过大，仅显示前100KB"
-            return f"📄 文件: {target_path}\n\n{file_content}", True
-        except UnicodeDecodeError:
-            return f"❌ 无法以文本方式读取该文件（可能为二进制文件）", True
-        except PermissionError:
-            return f"❌ 系统拒绝访问（权限不足）", True
-        except Exception as e:
-            return f"❌ 读取失败: {str(e)}", True
+    # 排除 git 相关命令
+    if not re.match(r'^(查看|cat|open|读取)\s+(git|Git)', msg):
+        m = re.match(r'^(查看|cat|open|读取)\s+(.+)$', msg)
+        if m:
+            filename = m.group(2).strip()
+            target_path = safe_path(filename)
+            # 检查权限
+            if not is_path_authorized(target_path):
+                return request_path_authorization(target_path), True
+            if not os.path.isfile(target_path):
+                return f"❌ 文件不存在: {target_path}", True
+            try:
+                with open(target_path, 'r', encoding='utf-8') as f:
+                    file_content = f.read()
+                max_len = 100000
+                if len(file_content) > max_len:
+                    file_content = file_content[:max_len] + "\n\n... 文件过大，仅显示前100KB"
+                return f"📄 文件: {target_path}\n\n{file_content}", True
+            except UnicodeDecodeError:
+                return f"❌ 无法以文本方式读取该文件（可能为二进制文件）", True
+            except PermissionError:
+                return f"❌ 系统拒绝访问（权限不足）", True
+            except Exception as e:
+                return f"❌ 读取失败: {str(e)}", True
 
     # 查找文件: 查找 <pattern> 或 find <pattern>
     m = re.match(r'^(查找|find|search)\s+(.+)$', msg)
@@ -397,7 +422,11 @@ def build_messages(model_key, user_message):
         f"- '查git状态' = 只调 git_status()，不准调别的\n"
         f"- '读文件X' = 只调 read_file('X')，不准调别的\n"
         f"- 绝对禁止自作主张调用用户没要求的工具\n"
-        f"\n工具：read_file, write_file, get_project_structure, git_status, git_diff, git_commit"
+        f"\n工具：read_file, write_file, get_project_structure, git_status, git_diff, git_commit, run_command\n"
+        f"\nrun_command 说明：\n"
+        f"- 只能运行白名单命令：pip, npm, pytest, git, ls, make 等\n"
+        f"- 危险命令（rm -rf /, sudo）会被拒绝\n"
+        f"- 命令在项目目录执行：{current_work_dir}"
     )
 
     messages = [{"role": "system", "content": system_content}]
@@ -785,8 +814,41 @@ TOOLS = [
                 "required": ["message"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "执行终端命令（仅限白名单安全命令：pip, npm, pytest, git, ls 等）",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "要执行的命令，如 'npm install express' 或 'pip install requests'"}
+                },
+                "required": ["command"]
+            }
+        }
     }
 ]
+
+
+def is_command_safe(command):
+    """检查命令是否安全"""
+    cmd_parts = command.strip().split()
+    if not cmd_parts:
+        return False, "命令为空"
+
+    # 检查命令前缀
+    cmd_base = cmd_parts[0]
+    if cmd_base not in COMMAND_WHITELIST:
+        return False, f"命令 '{cmd_base}' 不在白名单中"
+
+    # 检查危险模式
+    for pattern in DANGEROUS_PATTERNS:
+        if pattern in command:
+            return False, f"命令包含危险模式: {pattern}"
+
+    return True, ""
 
 
 def execute_tool(tool_name, arguments):
@@ -833,6 +895,37 @@ def execute_tool(tool_name, arguments):
             result = subprocess.run(['git', 'commit', '-m', message],
                                   cwd=current_work_dir, capture_output=True, text=True, timeout=10)
             return {"output": result.stdout}
+
+        elif tool_name == "run_command":
+            command = arguments.get("command", "").strip()
+
+            # 安全检查
+            is_safe, reason = is_command_safe(command)
+            if not is_safe:
+                return {"error": f"拒绝执行: {reason}"}
+
+            try:
+                # 执行命令
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=current_work_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+
+                return {
+                    "status": "ok" if result.returncode == 0 else "error",
+                    "returncode": result.returncode,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "command": command
+                }
+            except subprocess.TimeoutExpired:
+                return {"error": "命令执行超时（60秒）"}
+            except Exception as e:
+                return {"error": f"执行失败: {str(e)}"}
 
         return {"error": f"未知工具: {tool_name}"}
     except Exception as e:

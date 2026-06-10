@@ -870,7 +870,26 @@
                                 if (data.tool_result) {
                                     const resultDiv = document.createElement('div');
                                     resultDiv.className = 'message system';
-                                    resultDiv.textContent = `✅ 工具结果: ${data.tool_result.substring(0, 200)}${data.tool_result.length > 200 ? '...' : ''}`;
+
+                                    try {
+                                        const result = JSON.parse(data.tool_result);
+
+                                        // 特殊处理命令执行结果
+                                        if (result.command) {
+                                            let displayText = `✅ 命令: ${result.command}\n`;
+                                            if (result.stdout) displayText += `输出:\n${result.stdout}`;
+                                            if (result.stderr) displayText += `\n错误:\n${result.stderr}`;
+                                            if (result.returncode !== undefined) displayText += `\n退出码: ${result.returncode}`;
+                                            resultDiv.textContent = displayText;
+                                            resultDiv.style.whiteSpace = 'pre-wrap';
+                                        } else {
+                                            // 原有的截断显示
+                                            resultDiv.textContent = `✅ 工具结果: ${data.tool_result.substring(0, 200)}${data.tool_result.length > 200 ? '...' : ''}`;
+                                        }
+                                    } catch {
+                                        resultDiv.textContent = `✅ 工具结果: ${data.tool_result.substring(0, 200)}${data.tool_result.length > 200 ? '...' : ''}`;
+                                    }
+
                                     chatBox.appendChild(resultDiv);
                                     chatBox.scrollTop = chatBox.scrollHeight;
                                 }
