@@ -79,6 +79,10 @@
 
         .reasoning-block { background: rgba(22,119,255,0.1); border-left: 3px solid #1677ff; padding: 8px 12px; margin-bottom: 6px; border-radius: 0 8px 8px 0; font-size: 12px; color: var(--text-primary); line-height: 1.5; }
 
+        .code-actions { position: relative; }
+        .code-actions button { position: absolute; top: 8px; right: 8px; padding: 4px 12px; font-size: 11px; background: #1677ff; color: white; border: none; border-radius: 6px; cursor: pointer; opacity: 0.8; }
+        .code-actions button:hover { opacity: 1; }
+
         .input-area { padding: 10px 20px 14px; border-top: 1px solid var(--border-color); background: var(--bg-input); }
         .toolbar { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; align-items: center; }
         .toolbar span { font-size: 11px; color: var(--text-secondary); }
@@ -171,6 +175,8 @@
                 <div class="model-selector">
                     <button class="settings-btn" id="theme-btn" title="切换主题">🌓</button>
                     <button class="settings-btn" id="sessions-btn" title="会话管理">💬</button>
+                    <button class="settings-btn" id="project-btn" title="项目结构">📁</button>
+                    <button class="settings-btn" id="git-btn" title="Git 操作">🔀</button>
                     <button class="settings-btn" id="settings-btn" title="模型设置">⚙️</button>
                     <select id="model-select"><option value="">加载中...</option></select>
                 </div>
@@ -194,6 +200,39 @@
             </div>
         </div>
 
+        <!-- 项目结构面板 -->
+        <div class="modal-overlay" id="project-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>📁 项目结构</h2>
+                    <button class="close-btn" id="project-close">×</button>
+                </div>
+                <div class="modal-body">
+                    <button class="add-btn" id="refresh-project-btn" style="margin-bottom:12px;">🔄 刷新</button>
+                    <div id="project-structure" style="font-size:12px;font-family:monospace;white-space:pre;overflow:auto;max-height:500px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Git 操作面板 -->
+        <div class="modal-overlay" id="git-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>🔀 Git 操作</h2>
+                    <button class="close-btn" id="git-close">×</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom:12px;">
+                        <button class="add-btn" id="git-status-btn">📊 Status</button>
+                        <button class="add-btn" id="git-diff-btn" style="margin-left:8px;">📝 Diff</button>
+                        <button class="add-btn" id="git-commit-btn" style="margin-left:8px;">💾 Commit</button>
+                        <button class="add-btn" id="git-push-btn" style="margin-left:8px;">🚀 Push</button>
+                    </div>
+                    <div id="git-output" style="font-size:12px;font-family:monospace;white-space:pre-wrap;overflow:auto;max-height:400px;background:var(--bg-code);padding:12px;border-radius:8px;"></div>
+                </div>
+            </div>
+        </div>
+
         <div class="chat-box" id="chat-box">
             <div class="message system">选择模型，开始对话吧 ✨ 点击 ⚙️ 配置模型</div>
         </div>
@@ -204,6 +243,9 @@
             <div class="toolbar">
                 <span>快捷提示词：</span>
                 <select id="prompt-select"><option value="">— 选择模板 —</option></select>
+                <span style="margin-left:16px;">工具：</span>
+                <button class="header-btn" id="tool-read-file" style="padding:3px 8px;font-size:11px;" title="读取文件">📄 读取文件</button>
+                <button class="header-btn" id="tool-edit-file" style="padding:3px 8px;font-size:11px;" title="编辑文件">✏️ 编辑文件</button>
             </div>
             <div class="input-row">
                 <button class="clear-btn" id="clear-btn" title="清空对话">🗑️</button>
@@ -312,6 +354,19 @@
         const sessionsList = document.getElementById('sessions-list');
         const newSessionBtn = document.getElementById('new-session-btn');
         const themeBtn = document.getElementById('theme-btn');
+        const projectBtn = document.getElementById('project-btn');
+        const projectModal = document.getElementById('project-modal');
+        const projectClose = document.getElementById('project-close');
+        const projectStructure = document.getElementById('project-structure');
+        const refreshProjectBtn = document.getElementById('refresh-project-btn');
+        const gitBtn = document.getElementById('git-btn');
+        const gitModal = document.getElementById('git-modal');
+        const gitClose = document.getElementById('git-close');
+        const gitOutput = document.getElementById('git-output');
+        const gitStatusBtn = document.getElementById('git-status-btn');
+        const gitDiffBtn = document.getElementById('git-diff-btn');
+        const gitCommitBtn = document.getElementById('git-commit-btn');
+        const gitPushBtn = document.getElementById('git-push-btn');
 
         let currentSessionId = localStorage.getItem('currentSessionId') || 'default';
 
@@ -436,6 +491,102 @@
 
         sessionsClose.addEventListener('click', function() {
             sessionsModal.classList.remove('active');
+        });
+
+        // === 项目结构 ===
+        async function loadProjectStructure() {
+            try {
+                const res = await fetch('/api/project/structure');
+                const data = await res.json();
+                let output = '📁 项目文件:\n';
+                data.files.forEach(f => {
+                    output += `  ${f.path}\n`;
+                });
+                if (Object.keys(data.functions).length > 0) {
+                    output += '\n🔧 函数:\n';
+                    for (let [file, funcs] of Object.entries(data.functions)) {
+                        output += `  ${file}: ${funcs.join(', ')}\n`;
+                    }
+                }
+                if (Object.keys(data.classes).length > 0) {
+                    output += '\n📦 类:\n';
+                    for (let [file, classes] of Object.entries(data.classes)) {
+                        output += `  ${file}: ${classes.join(', ')}\n`;
+                    }
+                }
+                projectStructure.textContent = output;
+            } catch(err) {
+                projectStructure.textContent = '加载失败: ' + err.message;
+            }
+        }
+
+        projectBtn.addEventListener('click', function() {
+            projectModal.classList.add('active');
+            loadProjectStructure();
+        });
+
+        projectClose.addEventListener('click', function() {
+            projectModal.classList.remove('active');
+        });
+
+        refreshProjectBtn.addEventListener('click', loadProjectStructure);
+
+        // === Git 操作 ===
+        gitBtn.addEventListener('click', function() {
+            gitModal.classList.add('active');
+            gitOutput.textContent = '点击上方按钮执行 Git 操作';
+        });
+
+        gitClose.addEventListener('click', function() {
+            gitModal.classList.remove('active');
+        });
+
+        gitStatusBtn.addEventListener('click', async function() {
+            try {
+                const res = await fetch('/api/git/status');
+                const data = await res.json();
+                gitOutput.textContent = data.output || '工作区干净，没有待提交的更改';
+            } catch(err) {
+                gitOutput.textContent = '错误: ' + err.message;
+            }
+        });
+
+        gitDiffBtn.addEventListener('click', async function() {
+            try {
+                const res = await fetch('/api/git/diff');
+                const data = await res.json();
+                gitOutput.textContent = data.diff || '没有未暂存的更改';
+            } catch(err) {
+                gitOutput.textContent = '错误: ' + err.message;
+            }
+        });
+
+        gitCommitBtn.addEventListener('click', async function() {
+            const message = prompt('输入提交信息:');
+            if (!message) return;
+            try {
+                const res = await fetch('/api/git/commit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message})
+                });
+                const data = await res.json();
+                gitOutput.textContent = data.output || '✅ 提交成功';
+            } catch(err) {
+                gitOutput.textContent = '错误: ' + err.message;
+            }
+        });
+
+        gitPushBtn.addEventListener('click', async function() {
+            if (!confirm('确定要推送到远程仓库吗？')) return;
+            try {
+                gitOutput.textContent = '推送中...';
+                const res = await fetch('/api/git/push', {method: 'POST'});
+                const data = await res.json();
+                gitOutput.textContent = data.output || '✅ 推送成功';
+            } catch(err) {
+                gitOutput.textContent = '错误: ' + err.message;
+            }
         });
 
         // === 模型管理 ===
@@ -764,6 +915,23 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage();
+            }
+        });
+
+        // === 工具按钮 ===
+        document.getElementById('tool-read-file').addEventListener('click', function() {
+            const filename = prompt('输入要读取的文件路径（相对于项目根目录）:');
+            if (filename) {
+                input.value = `帮我读取文件 ${filename} 的内容，并分析一下`;
+                input.focus();
+            }
+        });
+
+        document.getElementById('tool-edit-file').addEventListener('click', function() {
+            const filename = prompt('输入要编辑的文件路径:');
+            if (filename) {
+                input.value = `帮我编辑文件 ${filename}`;
+                input.focus();
             }
         });
 

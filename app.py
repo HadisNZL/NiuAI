@@ -5,6 +5,7 @@ import re
 import difflib
 import ast
 import sqlite3
+import subprocess
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, Response
 from openai import OpenAI
@@ -596,6 +597,7 @@ def write_file_api():
         return jsonify({"error": "未授权访问"}), 403
 
     try:
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, 'w', encoding='utf-8') as f:
             f.write(content)
         recent_modifications.append({"action": "write", "path": target_path})
@@ -844,6 +846,70 @@ def export_conversation():
 def clear_conversation():
     conversations.clear()
     return jsonify({"status": "ok"})
+
+
+# === Git 集成 ===
+@app.route("/api/git/status")
+def git_status():
+    """获取 git 状态"""
+    try:
+        result = subprocess.run(['git', 'status', '--porcelain'],
+                              cwd=current_work_dir, capture_output=True, text=True, timeout=5)
+        return jsonify({
+            "status": "ok",
+            "output": result.stdout,
+            "modified": result.stdout.strip() != ""
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/git/diff")
+def git_diff():
+    """获取 git diff"""
+    try:
+        result = subprocess.run(['git', 'diff'],
+                              cwd=current_work_dir, capture_output=True, text=True, timeout=10)
+        return jsonify({"status": "ok", "diff": result.stdout})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/git/commit", methods=["POST"])
+def git_commit():
+    """提交更改"""
+    data = request.get_json()
+    message = data.get("message", "").strip()
+    files = data.get("files", [])
+
+    if not message:
+        return jsonify({"error": "提交信息不能为空"}), 400
+
+    try:
+        # 添加文件
+        if files:
+            for f in files:
+                subprocess.run(['git', 'add', f], cwd=current_work_dir, timeout=5)
+        else:
+            subprocess.run(['git', 'add', '-A'], cwd=current_work_dir, timeout=5)
+
+        # 提交
+        result = subprocess.run(['git', 'commit', '-m', message],
+                              cwd=current_work_dir, capture_output=True, text=True, timeout=10)
+        return jsonify({"status": "ok", "output": result.stdout})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/git/push", methods=["POST"])
+def git_push():
+    """推送到远程"""
+    try:
+        result = subprocess.run(['git', 'push'],
+                              cwd=current_work_dir, capture_output=True, text=True, timeout=30)
+        return jsonify({"status": "ok", "output": result.stdout + result.stderr})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
