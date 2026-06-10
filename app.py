@@ -390,31 +390,14 @@ def build_messages(model_key, user_message):
         )
 
     system_content = (
-        f"你是一个有用的AI编程助手，具备完整的文件系统访问和编辑能力。"
-        f"你当前正在被调用的模型是：{model_display_name}（API模型名：{model_api_name}）。"
-        f"\n\n## 项目信息\n"
-        f"当前工作目录：{current_work_dir}\n"
-        f"{project_ctx}"
-        f"{recent_mods}\n"
-        f"\n## 文件操作能力\n"
-        f"你可以直接使用以下命令操作文件（命令必须单独一行）：\n"
-        f"\n查看操作：\n"
-        f"- 列出 / ls - 列出当前目录内容\n"
-        f"- 进入 <路径> / cd <路径> - 切换目录\n"
-        f"- 查看 <文件> / cat <文件> - 查看文件内容\n"
-        f"- 查找 <关键词> / find <关键词> - 查找文件\n"
-        f"- 项目结构 / tree - 查看项目结构\n"
-        f"- 当前路径 / pwd - 显示当前路径\n"
-        f"\n编辑操作：\n"
-        f"- 写入 <文件> <内容> - 创建或覆盖文件\n"
-        f"- 创建 <文件> - 创建空文件\n"
-        f"- 删除 <文件> - 删除文件\n"
-        f"\n使用建议：\n"
-        f"1. 修改代码前先用'查看'命令看原内容\n"
-        f"2. 理解项目结构后再进行修改\n"
-        f"3. 一次修改一个文件，确保逻辑清晰\n"
-        f"4. 命令必须单独一行，不要嵌入句子中\n"
-        f"\n请使用 Markdown 格式回复。"
+        f"你是 AI 编程助手。模型：{model_display_name}。工作目录：{current_work_dir}\n"
+        f"{project_ctx}{recent_mods}\n"
+        f"\n⚠️ 工具调用铁律：\n"
+        f"- 用户说什么做什么，一个字都不要多\n"
+        f"- '查git状态' = 只调 git_status()，不准调别的\n"
+        f"- '读文件X' = 只调 read_file('X')，不准调别的\n"
+        f"- 绝对禁止自作主张调用用户没要求的工具\n"
+        f"\n工具：read_file, write_file, get_project_structure, git_status, git_diff, git_commit"
     )
 
     messages = [{"role": "system", "content": system_content}]
@@ -734,6 +717,128 @@ def clear_current_session():
     return jsonify({"status": "ok"})
 
 
+# === AI 工具函数定义 ===
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "读取项目中的文件内容",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "文件路径，相对于项目根目录"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "写入或创建文件",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "文件路径"},
+                    "content": {"type": "string", "description": "文件内容"}
+                },
+                "required": ["path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_project_structure",
+            "description": "获取项目结构，包括文件列表、函数、类等信息",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "查看 Git 状态",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "查看 Git diff",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_commit",
+            "description": "提交更改到 Git",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "提交信息"}
+                },
+                "required": ["message"]
+            }
+        }
+    }
+]
+
+
+def execute_tool(tool_name, arguments):
+    """执行工具函数"""
+    try:
+        if tool_name == "read_file":
+            path = arguments.get("path")
+            target_path = safe_path(path)
+            if not is_path_authorized(target_path):
+                return {"error": "未授权访问"}
+            with open(target_path, 'r', encoding='utf-8') as f:
+                return {"content": f.read(), "path": target_path}
+
+        elif tool_name == "write_file":
+            path = arguments.get("path")
+            content = arguments.get("content")
+            target_path = safe_path(path)
+            if not is_path_authorized(os.path.dirname(target_path)):
+                return {"error": "未授权访问"}
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(target_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return {"status": "ok", "path": target_path}
+
+        elif tool_name == "get_project_structure":
+            global project_structure
+            if not project_structure:
+                project_structure = scan_project_structure(current_work_dir)
+            return project_structure
+
+        elif tool_name == "git_status":
+            result = subprocess.run(['git', 'status', '--porcelain'],
+                                  cwd=current_work_dir, capture_output=True, text=True, timeout=5)
+            return {"output": result.stdout or "工作区干净"}
+
+        elif tool_name == "git_diff":
+            result = subprocess.run(['git', 'diff'],
+                                  cwd=current_work_dir, capture_output=True, text=True, timeout=10)
+            return {"diff": result.stdout or "没有未暂存的更改"}
+
+        elif tool_name == "git_commit":
+            message = arguments.get("message")
+            subprocess.run(['git', 'add', '-A'], cwd=current_work_dir, timeout=5)
+            result = subprocess.run(['git', 'commit', '-m', message],
+                                  cwd=current_work_dir, capture_output=True, text=True, timeout=10)
+            return {"output": result.stdout}
+
+        return {"error": f"未知工具: {tool_name}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.get_json()
@@ -774,34 +879,90 @@ def chat():
         response = client.chat.completions.create(
             model=cfg["model"],
             messages=messages,
+            tools=TOOLS,
             stream=True,
             **extra_kwargs,
         )
 
         def generate():
             full_content = ""
+            tool_calls = []
+            current_tool_call = None
+
             for chunk in response:
                 delta = chunk.choices[0].delta
+
+                # 处理推理内容
                 if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
                     yield json.dumps({"reasoning": delta.reasoning_content}) + "\n"
+
+                # 处理工具调用
+                if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        if tc_delta.index is not None:
+                            # 确保列表足够长
+                            while len(tool_calls) <= tc_delta.index:
+                                tool_calls.append({"id": "", "function": {"name": "", "arguments": ""}})
+                            current_tool_call = tool_calls[tc_delta.index]
+
+                            if tc_delta.id:
+                                current_tool_call["id"] = tc_delta.id
+                            if tc_delta.function:
+                                if tc_delta.function.name:
+                                    current_tool_call["function"]["name"] = tc_delta.function.name
+                                if tc_delta.function.arguments:
+                                    current_tool_call["function"]["arguments"] += tc_delta.function.arguments
+
+                # 处理文本内容
                 if delta.content:
                     full_content += delta.content
                     yield json.dumps({"content": delta.content}) + "\n"
 
-            # 保存 AI 回复到数据库
-            save_message(current_session_id, model_key, "assistant", full_content)
+            # 执行工具调用
+            if tool_calls:
+                for tc in tool_calls:
+                    tool_name = tc["function"]["name"]
+                    arguments = json.loads(tc["function"]["arguments"])
 
-            # 检查 AI 回复中是否包含文件命令并自动执行
-            lines = full_content.strip().split('\n')
-            for line in lines:
-                line = line.strip()
-                if line:
-                    cmd_result, is_cmd = handle_file_command(model_key, line)
-                    if is_cmd:
-                        # 找到命令，执行并返回结果
-                        yield json.dumps({"cmd_result": cmd_result, "work_dir": current_work_dir}) + "\n"
-                        # 将命令结果也保存到数据库
-                        save_message(current_session_id, model_key, "system", f"[命令执行结果]\n{cmd_result}")
+                    yield json.dumps({"tool_call": tool_name, "arguments": arguments}) + "\n"
+
+                    result = execute_tool(tool_name, arguments)
+                    result_str = json.dumps(result, ensure_ascii=False)
+
+                    yield json.dumps({"tool_result": result_str}) + "\n"
+
+                    # 将工具结果添加到消息历史，让 AI 继续生成回复
+                    messages.append({
+                        "role": "assistant",
+                        "tool_calls": [{
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": tc["function"]["arguments"]}
+                        }]
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": result_str
+                    })
+
+                # 再次调用 AI，让它基于工具结果生成回复
+                response2 = client.chat.completions.create(
+                    model=cfg["model"],
+                    messages=messages,
+                    stream=True,
+                    **extra_kwargs,
+                )
+
+                for chunk in response2:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        full_content += delta.content
+                        yield json.dumps({"content": delta.content}) + "\n"
+
+            # 保存 AI 回复到数据库
+            if full_content:
+                save_message(current_session_id, model_key, "assistant", full_content)
 
         return Response(generate(), mimetype="text/event-stream")
 
@@ -819,20 +980,33 @@ def chat():
 
 @app.route("/api/export")
 def export_conversation():
-    """导出所有模型的对话为 Markdown 格式"""
-    if not conversations:
+    """导出当前会话的对话为 Markdown 格式"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT model_key, role, content, created_at FROM messages WHERE session_id = ? ORDER BY created_at",
+              (current_session_id,))
+    messages = c.fetchall()
+    conn.close()
+
+    if not messages:
         return jsonify({"error": "对话为空"}), 400
 
-    lines = ["# NIU AI 对话记录\n", f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n", "---\n"]
+    lines = [
+        "# NIU AI 对话记录\n",
+        f"会话ID: {current_session_id}\n",
+        f"导出时间: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+        "---\n\n"
+    ]
 
-    for model_key, history in conversations.items():
-        if not history:
-            continue
-        model_name = MODELS.get(model_key, {}).get("name", model_key)
-        lines.append(f"## 🤖 {model_name}（{model_key}）\n\n")
-        for c in history:
-            role_label = "🧑 用户" if c["role"] == "user" else "🤖 AI"
-            lines.append(f"### {role_label}\n\n{c['content']}\n\n---\n")
+    current_model = None
+    for model_key, role, content, created_at in messages:
+        if model_key != current_model:
+            current_model = model_key
+            model_name = MODELS.get(model_key, {}).get("name", model_key)
+            lines.append(f"## 🤖 {model_name}（{model_key}）\n\n")
+
+        role_label = "🧑 用户" if role == "user" else "🤖 AI" if role == "assistant" else "⚙️ 系统"
+        lines.append(f"### {role_label}\n\n{content}\n\n---\n\n")
 
     content = "\n".join(lines)
     return Response(

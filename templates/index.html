@@ -858,6 +858,22 @@
                                         aiDiv.reasoningDiv = rDiv;
                                     }
                                 }
+                                // 工具调用
+                                if (data.tool_call) {
+                                    const toolDiv = document.createElement('div');
+                                    toolDiv.className = 'message system';
+                                    toolDiv.textContent = `🔧 调用工具: ${data.tool_call}(${JSON.stringify(data.arguments)})`;
+                                    chatBox.appendChild(toolDiv);
+                                    chatBox.scrollTop = chatBox.scrollHeight;
+                                }
+                                // 工具结果
+                                if (data.tool_result) {
+                                    const resultDiv = document.createElement('div');
+                                    resultDiv.className = 'message system';
+                                    resultDiv.textContent = `✅ 工具结果: ${data.tool_result.substring(0, 200)}${data.tool_result.length > 200 ? '...' : ''}`;
+                                    chatBox.appendChild(resultDiv);
+                                    chatBox.scrollTop = chatBox.scrollHeight;
+                                }
                             } catch(e) {}
                         }
                     }
@@ -913,6 +929,9 @@
         sendBtn.addEventListener('click', sendMessage);
         input.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.isComposing || e.keyCode === 229) {
+                    return;
+                }
                 e.preventDefault();
                 sendMessage();
             }
