@@ -313,7 +313,7 @@
         const newSessionBtn = document.getElementById('new-session-btn');
         const themeBtn = document.getElementById('theme-btn');
 
-        let currentSessionId = 'default';
+        let currentSessionId = localStorage.getItem('currentSessionId') || 'default';
 
         if (typeof marked !== 'undefined') {
             marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
@@ -349,7 +349,7 @@
                     item.className = 'model-list-item';
                     item.innerHTML = `
                         <div>
-                            <div class="model-name">${session.is_current ? '✓ ' : ''}会话: ${session.id}</div>
+                            <div class="model-name">${session.is_current ? '✓ ' : ''}${session.name}</div>
                             <div class="model-detail">${session.message_count} 条消息</div>
                         </div>
                         <button class="del-btn" onclick="deleteSession('${session.id}')">🗑️</button>
@@ -373,6 +373,7 @@
             try {
                 await fetch(`/api/sessions/${sessionId}`, {method: 'POST'});
                 currentSessionId = sessionId;
+                localStorage.setItem('currentSessionId', sessionId);
 
                 // 获取当前会话的历史对话
                 const res = await fetch('/api/sessions/current');
@@ -414,6 +415,7 @@
                 await fetch(`/api/sessions/${sessionId}`, {method: 'DELETE'});
                 if (sessionId === currentSessionId) {
                     currentSessionId = 'default';
+                    localStorage.setItem('currentSessionId', 'default');
                     chatBox.innerHTML = '<div class="message system">会话已删除，切换到默认会话</div>';
                 }
                 await loadSessions();
@@ -423,9 +425,8 @@
         }
 
         newSessionBtn.addEventListener('click', async function() {
-            const name = prompt('输入新会话名称:');
-            if (!name) return;
-            await switchSession(name);
+            const newSessionId = 'session_' + Date.now();
+            await switchSession(newSessionId);
         });
 
         sessionsBtn.addEventListener('click', function() {
@@ -767,8 +768,35 @@
         });
 
         // 初始加载
-        loadModels();
-        loadPrompts();
+        async function initApp() {
+            await loadModels();
+            loadPrompts();
+
+            // 恢复上次会话的历史消息
+            try {
+                await fetch(`/api/sessions/${currentSessionId}`, {method: 'POST'});
+                const res = await fetch('/api/sessions/current');
+                const data = await res.json();
+                const currentModel = modelSelect.value;
+                const history = data.conversations[currentModel] || [];
+
+                history.forEach(msg => {
+                    const div = document.createElement('div');
+                    div.className = 'message ' + msg.role;
+                    if (msg.role === 'assistant' && typeof marked !== 'undefined') {
+                        div.innerHTML = marked.parse(msg.content);
+                    } else {
+                        div.textContent = msg.content;
+                    }
+                    chatBox.appendChild(div);
+                });
+                chatBox.scrollTop = chatBox.scrollHeight;
+            } catch(err) {
+                console.log('恢复会话失败:', err);
+            }
+        }
+
+        initApp();
     </script>
 </body>
 </html>

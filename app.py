@@ -650,23 +650,29 @@ def list_sessions():
     c.execute('''SELECT session_id, COUNT(*) as msg_count
                  FROM messages GROUP BY session_id''')
     rows = c.fetchall()
-    conn.close()
 
     session_list = []
-    session_ids = set([row[0] for row in rows])
 
-    # 确保当前会话在列表中
-    if current_session_id not in session_ids:
-        session_ids.add(current_session_id)
+    for sid, msg_count in rows:
+        # 获取第一条用户消息作为会话名称
+        c.execute('''SELECT content FROM messages
+                     WHERE session_id = ? AND role = 'user'
+                     ORDER BY created_at ASC LIMIT 1''', (sid,))
+        first_msg = c.fetchone()
+        name = first_msg[0] if first_msg else sid
 
-    for sid in session_ids:
-        msg_count = next((row[1] for row in rows if row[0] == sid), 0)
+        # 截取20字，超过显示...
+        if len(name) > 20:
+            name = name[:20] + '...'
+
         session_list.append({
             "id": sid,
+            "name": name,
             "message_count": msg_count,
             "is_current": sid == current_session_id
         })
 
+    conn.close()
     return jsonify(session_list)
 
 
